@@ -1,21 +1,12 @@
 import casadi as ca 
+from base import Component
 
-class Translation1D(object):
-    def __init__(self,name):
-
-        self.name = name
-        self.params = [] 
-        self.states = [] 
-        self.ode_eqs = {}   
-        self.alg_eqs = []
-        self.ports = {} 
-
-class Mass(Translation1D):
+class Mass(Component):
     def __init__(self,name,m = 1.0):
         super().__init__(name)
 
         m_sym = ca.SX.sym(f'm_{self.name}')
-        self.params.append(m_sym)
+        self.register_param('m', m_sym, default=m)
 
         x_sym = ca.SX.sym(f'x_{self.name}')
         xdot_sym = ca.SX.sym(f'xdot_{self.name}')
@@ -32,12 +23,13 @@ class Mass(Translation1D):
         self.ports = {'p': [f_sym, x_sym, xdot_sym]}
 
 
-class Spring(Translation1D):
+class Spring(Component):
     def __init__(self,name,k = 1.0):
         super().__init__(name)
 
         k_sym = ca.SX.sym(f'k_{self.name}')
-        self.params.append(k_sym)
+        self.register_param('k', k_sym, default=k)
+
 
         x1_sym = ca.SX.sym(f'x1_{self.name}')
         x2_sym = ca.SX.sym(f'x2_{self.name}')
@@ -53,12 +45,13 @@ class Spring(Translation1D):
         self.ports = {'p1': [f1_sym, x1_sym, x1dot_sym], 'p2': [f2_sym, x2_sym, x2dot_sym]}
         
 
-class Damper(Translation1D):
+class Damper(Component):
     def __init__(self,name,c = 0.1):
         super().__init__(name)
 
         c_sym = ca.SX.sym(f'c_{self.name}')
-        self.params.append(c_sym)
+        self.register_param('c', c_sym, default=c)
+
 
         x1_sym = ca.SX.sym(f'x1_{self.name}')
         x2_sym = ca.SX.sym(f'x2_{self.name}')
@@ -74,7 +67,7 @@ class Damper(Translation1D):
         self.ports = {'p1': [f1_sym, x1_sym, x1dot_sym], 'p2': [f2_sym, x2_sym, x2dot_sym]}
 
 
-class Ground(Translation1D):
+class Ground(Component):
     def __init__(self,name):
         super().__init__(name)
 
@@ -83,6 +76,28 @@ class Ground(Translation1D):
         f_sym = ca.SX.sym(f'f_{self.name}')
 
         self.alg_eqs = [x_sym,
-                            xdot_sym]
+                        xdot_sym]
 
         self.ports = {'p':[f_sym, x_sym, xdot_sym]} 
+
+class Force(Component):
+    def __init__(self, name, F=0.0):
+        super().__init__(name)
+
+        f_sym = ca.SX.sym(f'f_{self.name}')
+        x_sym = ca.SX.sym(f'x_{self.name}')
+        xdot_sym = ca.SX.sym(f'xdot_{self.name}')
+
+        F_sym = ca.SX.sym(f'F_{self.name}')
+        self.register_param('F', F_sym, default=F)
+
+
+        # Force imposes a value on f at its port
+        self.alg_eqs = [f_sym - F_sym]
+
+        self.ports = {'p': [f_sym, x_sym, xdot_sym]}
+
+
+
+
+
