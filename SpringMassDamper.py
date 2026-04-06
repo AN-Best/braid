@@ -2,12 +2,13 @@ from base import System, Node
 from components.linear_mechanical_1D import Mass, Spring, Damper, Ground, Force
 from compile import Compile
 from jaxadi import convert
+from backend_conversion import casadi2jax
 import numpy as np
 import jax.numpy as jnp
 from diffrax import diffeqsolve, ODETerm, Tsit5, SaveAt
 import matplotlib.pyplot as plt
 from jax import vmap
-from backend_conversion import casadi2jax
+
 
 mass = Mass('mass',m = 1.0)
 spring = Spring('spring', k = 1.0)

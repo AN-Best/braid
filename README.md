@@ -6,6 +6,16 @@ Braid lets you build physical systems from reusable components — springs, mass
 
 ---
 
+## Licensing
+
+Braid is free for non-commercial use, including academic research, personal projects, and educational purposes.
+
+**Commercial use requires a license.** If you are using Braid in an industry context — including research funded by industry, product development, or internal tooling — please get in touch to discuss licensing options.
+
+📬 [Contact for commercial licensing](mailto:anbest.37.7@gmail.com)
+
+---
+
 ## Motivation
 
 Most physics simulators for RL either lock you into rigid-body dynamics (MuJoCo, Brax) or require you to manually derive equations of motion. Braid takes a different approach: you describe your system using an acausal component library, and the compiler handles the rest — DAE assembly, index reduction, and code generation to JAX.
