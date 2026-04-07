@@ -1,4 +1,5 @@
 <img width="256" height="256" alt="Hexagonal braid logo on purple" src="https://github.com/user-attachments/assets/9c0c00c2-a4c6-49da-a85b-a1cf58d18091" /> </br>
+
 # braid
 
 **GPU-parallel acausal component-based simulation for reinforcement learning and optimal control.**
