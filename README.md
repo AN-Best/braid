@@ -91,7 +91,7 @@ results = vmap(lambda y0: diffeqsolve(..., y0=y0, ...).ys)(batch_y0)
 
 **What works:**
 
-- 1D translational mechanical components: `Mass`, `Spring`, `Damper`, `Ground`
+- 1D translational mechanical components: `Mass`, `Spring`, `Damper`, `Ground`, `Force`
 - Acausal port-based connections via `Node` with automatic force summation and kinematic consistency
 - Automatic DAE assembly from component graph
 - DAE index reduction via CasADi (`dae_reduce_index`, `dae_map_semi_expl`)
@@ -102,7 +102,6 @@ results = vmap(lambda y0: diffeqsolve(..., y0=y0, ...).ys)(batch_y0)
 **Known limitations:**
 
 - Only 1D translational mechanical domain implemented
-- No actuator/force input component yet (needed for RL control)
 - No Gymnasium wrapper yet
 - Backend is tightly coupled to CasADi (abstraction layer planned)
 - JAXADi has limitations on very large expression graphs
