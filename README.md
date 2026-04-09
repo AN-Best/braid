@@ -112,11 +112,10 @@ results = vmap(lambda y0: diffeqsolve(..., y0=y0, ...).ys)(batch_y0)
 
 ## Roadmap
 
-- `Force` actuator component for RL control inputs
 - Gymnasium environment wrapper
 - Train a policy on mass-spring-damper (PPO via Stable Baselines or similar)
 - Additional domains: rotational mechanical, electrical
-- Backend abstraction layer (CasADi → ModelingToolkit.jl via `juliacall`)
+- Backend abstraction layer (CasADi → PyTorch,Numpy,etc.)
 - 2D planar multi-body systems
 
 ---
@@ -137,9 +136,10 @@ diffrax
 ```
 braid/
     components/
-        linear_mechanical_1D.py   # Mass, Spring, Damper, Ground
-    system.py                     # System, Node
-    compile.py                    # Compile: DAE → JAX function
+        linear_mechanical_1D.py   # Mass, Spring, Damper, Ground, Force
+    base.py                       # System, Node, Component
+    compile.py                    # Compile: DAE → ODE
+    backend_conversion.py         # CASADi → target (currently JAX via jaxadi)
 ```
 
 ---
