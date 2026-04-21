@@ -1,4 +1,6 @@
-# Braid
+<img width="256" height="256" alt="Hexagonal braid logo on purple" src="https://github.com/user-attachments/assets/9c0c00c2-a4c6-49da-a85b-a1cf58d18091" /> </br>
+
+# braid
 
 **GPU-parallel acausal component-based simulation for reinforcement learning and optimal control.**
 
@@ -91,7 +93,7 @@ results = vmap(lambda y0: diffeqsolve(..., y0=y0, ...).ys)(batch_y0)
 
 **What works:**
 
-- 1D translational mechanical components: `Mass`, `Spring`, `Damper`, `Ground`
+- 1D translational mechanical components: `Mass`, `Spring`, `Damper`, `Ground`, `Force`
 - Acausal port-based connections via `Node` with automatic force summation and kinematic consistency
 - Automatic DAE assembly from component graph
 - DAE index reduction via CasADi (`dae_reduce_index`, `dae_map_semi_expl`)
@@ -102,7 +104,6 @@ results = vmap(lambda y0: diffeqsolve(..., y0=y0, ...).ys)(batch_y0)
 **Known limitations:**
 
 - Only 1D translational mechanical domain implemented
-- No actuator/force input component yet (needed for RL control)
 - No Gymnasium wrapper yet
 - Backend is tightly coupled to CasADi (abstraction layer planned)
 - JAXADi has limitations on very large expression graphs
@@ -111,11 +112,10 @@ results = vmap(lambda y0: diffeqsolve(..., y0=y0, ...).ys)(batch_y0)
 
 ## Roadmap
 
-- `Force` actuator component for RL control inputs
 - Gymnasium environment wrapper
 - Train a policy on mass-spring-damper (PPO via Stable Baselines or similar)
 - Additional domains: rotational mechanical, electrical
-- Backend abstraction layer (CasADi → ModelingToolkit.jl via `juliacall`)
+- Backend abstraction layer (CasADi → PyTorch,Numpy,etc.)
 - 2D planar multi-body systems
 
 ---
@@ -136,9 +136,10 @@ diffrax
 ```
 braid/
     components/
-        linear_mechanical_1D.py   # Mass, Spring, Damper, Ground
-    system.py                     # System, Node
-    compile.py                    # Compile: DAE → JAX function
+        linear_mechanical_1D.py   # Mass, Spring, Damper, Ground, Force
+    base.py                       # System, Node, Component
+    compile.py                    # Compile: DAE → ODE
+    backend_conversion.py         # CASADi → target (currently JAX via jaxadi)
 ```
 
 ---
