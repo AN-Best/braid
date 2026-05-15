@@ -1,22 +1,16 @@
-import numpy as np
-
 class Component(object):
     def __init__(self, name):
-
         self.name = name
         self.states = []
         self.params = []        
         self._param_meta = {}   
-        self.connection_alg_eqs = []
-        self.alg_eqs = []
-        self.ode_eqs = {}
+        self.equations = []
 
     def register_param(self, param_name, sym, default):
         self.params.append(sym)
         self._param_meta[param_name] = {'sym': sym, 'default': default}
 
-def Node(system,comp_set):
-
+def Node(system, comp_set):
     eq = comp_set[0][0].ports[comp_set[0][1]][0]
     x_ref = comp_set[0][0].ports[comp_set[0][1]][1]
     v_ref = comp_set[0][0].ports[comp_set[0][1]][2]
@@ -26,36 +20,33 @@ def Node(system,comp_set):
         x_i = comp.ports[port][1]
         v_i = comp.ports[port][2]
         eq = eq + pi
-        system.connection_alg_eqs.append(x_ref- x_i)
-        system.connection_alg_eqs.append(v_ref- v_i)
+        system.equations.append(x_ref - x_i)
+        system.equations.append(v_ref - v_i)
+    
     node_eq = eq
-
-    system.connection_alg_eqs.append(node_eq)
-
+    system.equations.append(node_eq)
     
 class System(object):
-    def __init__(self,components):
+    def __init__(self, components):
         self.components = components
-        self.elsd=dict([(e.name,e) for e in components])
-        self.connection_alg_eqs = []
-        self.alg_eqs = []
-        self.ode_eqs = {}
+        self.elsd = dict([(e.name, e) for e in components])
+        
         self.states = []
         self.params = []
+        self.equations = []
 
         for e in self.components:
             self.states += e.states
             self.params += e.params
-            if hasattr(e,'alg_eqs'):
-                self.alg_eqs += e.alg_eqs
-            if hasattr(e,'ode_eqs'):
-                self.ode_eqs.update(e.ode_eqs)
+            if hasattr(e, 'equations'):
+                self.equations += e.equations
 
     def get_param_vector(self, overrides=None):
         """Build ordered parameter array from defaults, with optional overrides.
         
         overrides: dict like {'mass.m': 2.0, 'spring.k': 10.0}
         """
+        import numpy as np
         overrides = overrides or {}
         values = []
         for component in self.components:
@@ -74,3 +65,18 @@ class System(object):
                 idx += 1
         raise KeyError(f'{component_name}.{param_name} not found')
 
+    def to_dae(self):
+        """Convert the assembled system into a SystemDAE object for index reduction."""
+        import sympy as sp
+        from sym_dae import SystemDAE
+        
+        dae = SystemDAE()
+        # Ensure we use the exact same symbol instance for time
+        t = sp.Symbol('t')
+        dae.t = t
+        
+        dae.states = self.states.copy()
+        dae.params = self.params.copy()
+        dae.equations = self.equations.copy()
+            
+        return dae
