@@ -1,26 +1,42 @@
-from IR_BASE import *
+import sympy as sp
+from sym_dae import SystemDAE
 
-
-def rewrite(node:Node,dae:DAE):
-    new_children = [rewrite(child, dae) for child in node.children()]
-    node = node.with_children(new_children) 
-    if isinstance(node,Der) and isinstance(node.children()[0],Der):
-        new_state = State(f"{node.children()[0].children()[0].name}_dot")
-        dae.derivatives[node.children()[0].children()[0].name] = new_state
-        dae.equations.append(Subtract(node.children()[0], new_state))
-        dae.states.append(new_state)
-        node = Der(new_state)
-        return node
-    else:
-        return node
-        
-def order_reduction_pass(dae:DAE) -> DAE:
-
-    new_dae = DAE()
-    new_dae.states = dae.states
-    new_dae.derivatives = dae.derivatives
-
+def order_reduction_pass(dae: SystemDAE) -> SystemDAE:
+    new_dae = dae.copy_structure()
+    t = new_dae.t
+    
     for eq in dae.equations:
-        new_eq = rewrite(eq, new_dae)
+        new_eq = eq
+        
+        # Find all derivatives in the equation
+        derivatives = eq.find(sp.Derivative)
+        
+        for deriv in derivatives:
+            # Check if it's a second derivative with respect to time t
+            if len(deriv.variables) == 2 and all(v == t for v in deriv.variables):
+                # The state function being differentiated, e.g., x(t)
+                state_func = deriv.expr
+                
+                # Create a new state function for the first derivative, e.g., x_dot(t)
+                state_name = state_func.func.__name__
+                v_name = f"{state_name}_dot"
+                v_func = sp.Function(v_name)(t)
+                
+                # Add to states if not already there
+                if v_func not in new_dae.states:
+                    new_dae.states.append(v_func)
+                    
+                    # Store derivative mapping
+                    new_dae.derivatives[state_func] = v_func
+                    
+                    # Add definition equation: x'(t) - x_dot(t) = 0
+                    def_eq = sp.Derivative(state_func, t) - v_func
+                    new_dae.equations.append(def_eq)
+                
+                # Replace x''(t) with v'(t) in the current equation
+                new_deriv = sp.Derivative(v_func, t)
+                new_eq = new_eq.replace(deriv, new_deriv)
+                
         new_dae.equations.append(new_eq)
+        
     return new_dae
