@@ -10,6 +10,31 @@ class Component(object):
         self.params.append(sym)
         self._param_meta[param_name] = {'sym': sym, 'default': default}
 
+def _equate_elementwise(system, a, b):
+    if isinstance(a, (list, tuple)):
+        for x, y in zip(a, b):
+            _equate_elementwise(system, x, y)
+    elif hasattr(a, 'shape') and hasattr(a, '__getitem__'): # Matrix or ndarray
+        for idx in range(len(a)):
+            system.equations.append(a[idx] - b[idx])
+    else:
+        system.equations.append(a - b)
+
+def _add_elementwise(a, b):
+    if isinstance(a, (list, tuple)):
+        return [_add_elementwise(x, y) for x, y in zip(a, b)]
+    return a + b
+
+def _register_flow_equations(system, eq):
+    if isinstance(eq, (list, tuple)):
+        for x in eq:
+            _register_flow_equations(system, x)
+    elif hasattr(eq, 'shape') and hasattr(eq, '__getitem__'):
+        for idx in range(len(eq)):
+            system.equations.append(eq[idx])
+    else:
+        system.equations.append(eq)
+
 def Node(system, comp_set):
     eq = comp_set[0][0].ports[comp_set[0][1]][0]
     x_ref = comp_set[0][0].ports[comp_set[0][1]][1]
@@ -19,12 +44,11 @@ def Node(system, comp_set):
         pi = comp.ports[port][0]
         x_i = comp.ports[port][1]
         v_i = comp.ports[port][2]
-        eq = eq + pi
-        system.equations.append(x_ref - x_i)
-        system.equations.append(v_ref - v_i)
+        eq = _add_elementwise(eq, pi)
+        _equate_elementwise(system, x_ref, x_i)
+        _equate_elementwise(system, v_ref, v_i)
     
-    node_eq = eq
-    system.equations.append(node_eq)
+    _register_flow_equations(system, eq)
     
 class System(object):
     def __init__(self, components):

@@ -13,8 +13,12 @@ from backends.torch_backend import from_dae
 from ode_solvers import solve_algebraic_step, rk4_rollout
 
 def test_torch_backend_compilation():
+    # Detect GPU/CUDA support dynamically
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
     print("==================================================")
     print("Testing PyTorch Backend DAE Compilation & Execution")
+    print(f"Target Device: {device.upper()}")
     print("==================================================")
     
     # 1. Recreate the Mass-Spring-Damper system
@@ -31,9 +35,9 @@ def test_torch_backend_compilation():
     dae = system.to_dae()
     reduced_dae = order_reduction_pass(dae)
     
-    # 2. Compile to PyTorch
+    # 2. Compile to PyTorch and move to device
     print("\n[Step 2] Compiling DAE to PyTorch module...")
-    torch_sys = from_dae(reduced_dae)
+    torch_sys = from_dae(reduced_dae).to(device)
     
     # 3. Verify variable parsing
     print("\nParsed Variables:")
@@ -49,15 +53,15 @@ def test_torch_backend_compilation():
     
     # 4. Evaluate single input
     print("\n[Step 3] Evaluating system residual with single input...")
-    t = torch.tensor(0.0, requires_grad=True)
+    t = torch.tensor(0.0, device=device, requires_grad=True)
     # x = [x_mass, x_mass_dot]
-    x = torch.tensor([1.0, 0.5], requires_grad=True)
+    x = torch.tensor([1.0, 0.5], device=device, requires_grad=True)
     # x_dot = [d_x_mass, d_x_mass_dot]
-    x_dot = torch.tensor([0.5, -2.5], requires_grad=True)
+    x_dot = torch.tensor([0.5, -2.5], device=device, requires_grad=True)
     # z = algebraic variables
-    z = torch.zeros(len(torch_sys.algebraic_names), requires_grad=True)
+    z = torch.zeros(len(torch_sys.algebraic_names), device=device, requires_grad=True)
     # p = params (m_mass, k_spring, c_damper)
-    p = torch.tensor(system.get_param_vector(), requires_grad=True)
+    p = torch.tensor(system.get_param_vector(), device=device, requires_grad=True)
     
     res = torch_sys(t, x, x_dot, z, p)
     print("Single residual value:\n", res)
@@ -81,11 +85,11 @@ def test_torch_backend_compilation():
     # 6. Verify batched evaluation
     print("\n[Step 5] Evaluating system residual with batched inputs...")
     batch_size = 8
-    t_batch = torch.linspace(0.0, 1.0, batch_size)
-    x_batch = torch.randn(batch_size, len(torch_sys.state_names))
-    x_dot_batch = torch.randn(batch_size, len(torch_sys.state_dot_names))
-    z_batch = torch.randn(batch_size, len(torch_sys.algebraic_names))
-    p_batch = p.detach().repeat(batch_size, 1)
+    t_batch = torch.linspace(0.0, 1.0, batch_size, device=device)
+    x_batch = torch.randn(batch_size, len(torch_sys.state_names), device=device)
+    x_dot_batch = torch.randn(batch_size, len(torch_sys.state_dot_names), device=device)
+    z_batch = torch.randn(batch_size, len(torch_sys.algebraic_names), device=device)
+    p_batch = p.detach().repeat(batch_size, 1).to(device)
     
     res_batch = torch_sys(t_batch, x_batch, x_dot_batch, z_batch, p_batch)
     print("Batched residual shape:", res_batch.shape)
@@ -93,8 +97,8 @@ def test_torch_backend_compilation():
     
     # 7. Verify Numerical RK4 DAE Rollout
     print("\n[Step 6] Verifying Numerical RK4 DAE Rollout...")
-    x0 = torch.tensor([1.0, 0.0])  # Initial: position = 1.0, velocity = 0.0
-    p_val = torch.tensor(system.get_param_vector())  # Default params
+    x0 = torch.tensor([1.0, 0.0], device=device)  # Initial: position = 1.0, velocity = 0.0
+    p_val = torch.tensor(system.get_param_vector(), device=device)  # Default params
     dt = 0.05
     num_steps = 40
     
@@ -115,11 +119,11 @@ def test_torch_backend_compilation():
     batch_size_rollout = 4
     
     # Enable gradients on initial state and parameters
-    x0_ref = torch.tensor([1.0, 0.0], requires_grad=True)
-    p_ref = torch.tensor(system.get_param_vector(), requires_grad=True)
+    x0_ref = torch.tensor([1.0, 0.0], device=device, requires_grad=True)
+    p_ref = torch.tensor(system.get_param_vector(), device=device, requires_grad=True)
     
     # Create batched inputs that are derived from x0_ref and p_ref to trace gradients
-    x0_batch = x0_ref.unsqueeze(0).repeat(batch_size_rollout, 1) * torch.tensor([[1.0], [1.5], [2.0], [2.5]])
+    x0_batch = x0_ref.unsqueeze(0).repeat(batch_size_rollout, 1) * torch.tensor([[1.0], [1.5], [2.0], [2.5]], device=device)
     p_batch = p_ref.unsqueeze(0).repeat(batch_size_rollout, 1)
     
     x_traj_batch, z_traj_batch = rk4_rollout(torch_sys, x0_batch, p_batch, dt, num_steps)

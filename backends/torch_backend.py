@@ -132,9 +132,35 @@ def from_dae(dae) -> TorchSystem:
     Returns:
         TorchSystem: A PyTorch module for the DAE.
     """
+    # 0. Symbolic Elimination Pass to simplify algebraic constraints
+    dae_equations = dae.equations.copy()
+    states = set(dae.states)
+    print("DEBUG compiler: dae.states =", [s.func.__name__ for s in dae.states])
+    
+    changed = True
+    while changed:
+        changed = False
+        for eq in dae_equations:
+            funcs = list(eq.find(sp.core.function.AppliedUndef))
+            for f in funcs:
+                if f in states:
+                    continue
+                coeff = eq.diff(f)
+                if coeff != 0 and not coeff.has(f):
+                    # Safe linear substitution check: coefficient must not contain algebraic variables or derivatives
+                    if all(func in states for func in coeff.find(sp.core.function.AppliedUndef)) and len(coeff.find(sp.Derivative)) == 0:
+                        rest = eq.subs(f, 0)
+                        sol = -rest / coeff
+                        dae_equations.remove(eq)
+                        dae_equations = [other_eq.subs(f, sol) for other_eq in dae_equations]
+                        changed = True
+                        break
+            if changed:
+                break
+
     # 1. Find all Derivative expressions in the equations
     all_derivs = set()
-    for eq in dae.equations:
+    for eq in dae_equations:
         all_derivs.update(eq.find(sp.Derivative))
 
     # 2. Map state derivatives and algebraic derivatives to simple symbols
@@ -180,7 +206,7 @@ def from_dae(dae) -> TorchSystem:
 
     # 4. Find all other functions (algebraics)
     all_funcs = set()
-    for eq in dae.equations:
+    for eq in dae_equations:
         all_funcs.update(eq.find(sp.core.function.AppliedUndef))
 
     algebraic_funcs = [f for f in all_funcs if f not in dae.states]
@@ -197,11 +223,12 @@ def from_dae(dae) -> TorchSystem:
     algebraic_symbols.extend(other_deriv_symbols)
     
     # Sort algebraic symbols alphabetically by name for deterministic ordering
+    print("DEBUG compiler: remaining_alg =", [f.func.__name__ for f in algebraic_funcs], "other_derivs =", [s.name for s in other_deriv_symbols])
     algebraic_symbols.sort(key=lambda s: s.name)
 
     # 5. Substitute equations
     replaced_equations = []
-    for eq in dae.equations:
+    for eq in dae_equations:
         # First substitute state derivatives and algebraic derivatives
         eq_replaced = eq.subs(state_dot_subs)
         eq_replaced = eq_replaced.subs(other_deriv_subs)
