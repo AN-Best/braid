@@ -31,10 +31,10 @@ The result is a differentiable, GPU-parallel ODE that can be vmapped over thousa
 ```
 Components (Spring, Mass, Damper)
     ↓ Node() connections
-SymPy DAE assembly (SystemDAE)
-    ↓ Order Reduction & Pantelides Algorithm [WIP]
-Explicit ODE [WIP]
-    ↓ sympy2jax / lambdify [Planned]
+CasADi DAE assembly
+    ↓ dae_reduce_index + dae_map_semi_expl
+Explicit ODE
+    ↓ JAXADi convert()
 JAX function
     ↓ jax.vmap + Diffrax
 GPU-parallel trajectories
@@ -42,12 +42,17 @@ GPU-parallel trajectories
 
 ---
 
-## Example: Mass-Spring-Damper Assembly
+## Example: Mass-Spring-Damper
 
 ```python
-from components.linear_mechanical_1D import Mass, Spring, Damper, Ground
-from base import System, Node
-from index_reduction import order_reduction_pass
+from braid.components.linear_mechanical_1D import Mass, Spring, Damper, Ground
+from braid.system import System, Node
+from braid.compile import Compile
+
+from jaxadi import convert
+from diffrax import diffeqsolve, ODETerm, Tsit5, SaveAt
+from jax import vmap
+import jax.numpy as jnp
 
 # Define components
 mass   = Mass('mass', m=2.0)
@@ -60,42 +65,68 @@ system = System([mass, spring, damper, ground])
 Node(system, [(mass, 'p'), (spring, 'p2'), (damper, 'p2')])
 Node(system, [(ground, 'p'), (spring, 'p1'), (damper, 'p1')])
 
-# Convert to SymPy DAE and perform order reduction
-dae = system.to_dae()
-reduced_dae = order_reduction_pass(dae)
+# Compile to JAX
+ode_fn = Compile(system)
+jax_fn = convert(ode_fn, compile=True)
 
-# [WIP] Pantelides index reduction and JAX compilation...
+# Integrate
+def vector_field(t, y, args):
+    return jax_fn(y, args)[0][:, 0]
+
+sol = diffeqsolve(
+    ODETerm(vector_field), Tsit5(),
+    t0=0.0, t1=10.0, dt0=0.01,
+    y0=jnp.array([1.0, 0.0]),
+    args=jnp.array([2.0, 10.0, 0.2]),
+    saveat=SaveAt(ts=jnp.linspace(0, 10, 1000))
+)
+
+# GPU-parallel rollouts via vmap
+batch_y0 = jnp.array([[1.0, 0.0], [0.5, 0.0], [2.0, 0.0]])
+results = vmap(lambda y0: diffeqsolve(..., y0=y0, ...).ys)(batch_y0)
+# results.shape = (3, 1000, 2)
 ```
 
 ---
 
-## Current State (Architecture Transition)
-
-**Note:** The project is currently transitioning its core backend from `CasADi` to `SymPy` to better support high-index DAE structural analysis (e.g. Index-3 mechanical systems) via the Pantelides algorithm.
+## Current State (MVP)
 
 **What works:**
 
-- 1D translational mechanical components: `Mass`, `Spring`, `Damper`, `Ground`, `Force` using native `sympy.Derivative` objects.
-- Acausal port-based connections via `Node` with automatic force summation and position/velocity matching.
-- Automatic DAE assembly from the component graph into a `SystemDAE` object.
-- **Order Reduction:** Automatic lowering of 2nd-order ODE constraints into 1st-order systems.
+- 1D translational mechanical components: `Mass`, `Spring`, `Damper`, `Ground`, `Force`
+- Acausal port-based connections via `Node` with automatic force summation and kinematic consistency
+- Automatic DAE assembly from component graph
+- DAE index reduction via CasADi (`dae_reduce_index`, `dae_map_semi_expl`)
+- Symbolic algebraic elimination to produce explicit ODE
+- JAX code generation via JAXADi
+- GPU-parallel rollouts via `jax.vmap` + Diffrax
 
-**Known limitations / WIP:**
+**Known limitations:**
 
-- Pantelides algorithm for structural index reduction is under active development.
-- `compile.py` (CasADi → JAX via JAXADi) is currently deprecated and awaiting a SymPy-to-JAX rewrite.
-- Only 1D translational mechanical domain implemented.
-- No Gymnasium wrapper yet.
+- Only 1D translational mechanical domain implemented
+- No Gymnasium wrapper yet
+- Backend is tightly coupled to CasADi (abstraction layer planned)
+- JAXADi has limitations on very large expression graphs
+
+---
+
+## Roadmap
+
+- Gymnasium environment wrapper
+- Train a policy on mass-spring-damper (PPO via Stable Baselines or similar)
+- Additional domains: rotational mechanical, electrical
+- Backend abstraction layer (CasADi → PyTorch,Numpy,etc.)
+- 2D planar multi-body systems
 
 ---
 
 ## Dependencies
 
 ```
-sympy
-numpy
-jax (Planned)
-diffrax (Planned)
+casadi
+jaxadi
+jax
+diffrax
 ```
 
 ---
@@ -107,13 +138,12 @@ braid/
     components/
         linear_mechanical_1D.py   # Mass, Spring, Damper, Ground, Force
     base.py                       # System, Node, Component
-    sym_dae.py                    # SymPy SystemDAE representation
-    index_reduction.py            # Order reduction pass (Pantelides WIP)
-    compile.py                    # [Deprecated] CasADi → JAX compiler
+    compile.py                    # Compile: DAE → ODE
+    backend_conversion.py         # CASADi → target (currently JAX via jaxadi)
 ```
 
 ---
 
 ## Background
 
-Braid is inspired by Modelica's acausal modeling paradigm and the SciML ecosystem's ModelingToolkit.jl. The core insight is that the component architecture — not the backend — is the primary contribution.
+Braid is inspired by Modelica's acausal modeling paradigm and the SciML ecosystem's ModelingToolkit.jl. The core insight is that the component architecture — not the backend — is the primary contribution. CasADi handles DAE index reduction and symbolic algebra; JAXADi and Diffrax handle GPU execution.
