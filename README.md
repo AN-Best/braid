@@ -20,9 +20,9 @@ Braid is free for non-commercial use, including academic research, personal proj
 
 ## Motivation
 
-Most physics simulators for RL either lock you into rigid-body dynamics (MuJoCo, Brax) or require you to manually derive equations of motion. Braid takes a different approach: you describe your system using an acausal component library, and the compiler handles the rest — DAE assembly, index reduction, tearing/elimination, and code generation to JAX.
+Most physics simulators for RL either lock you into rigid-body dynamics (MuJoCo, Brax) or require you to manually derive equations of motion. Braid takes a different approach: you describe your system using an acausal component library, and the compiler handles the rest — DAE assembly, index reduction, tearing/elimination, and code generation to target numerical backends.
 
-The result is a differentiable, GPU-parallel ODE that can be vmapped over thousands of rollouts simultaneously.
+The result is a differentiable, GPU-parallel ODE that can be evaluated over thousands of rollouts/initial conditions simultaneously.
 
 ---
 
@@ -42,8 +42,8 @@ Explicit solved assignments
 Minimal ODE assignments (ode_assignments)
     ↓ JSON IR Serialization (json_ir.py)
 JSON Intermediate Representation (srepr-encoded)
-    ↓ sympy2jax / JAX Code Gen [Planned]
-JAX function (jax.vmap + Diffrax)
+    ↓ Code Generation (NumPy, PyTorch, JAX, etc.)
+Numeric simulation functions (vmap / parallel batch execution)
 ```
 
 ---
