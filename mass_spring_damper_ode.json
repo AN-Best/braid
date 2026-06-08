@@ -1,0 +1,136 @@
+{
+  "t": "Symbol('t')",
+  "params": [
+    "Symbol('m_mass')",
+    "Symbol('k_spring')",
+    "Symbol('c_damper')"
+  ],
+  "states": [
+    "Function('x1_damper')(Symbol('t'))",
+    "Function('x2_damper')(Symbol('t'))",
+    "Function('x_ground')(Symbol('t'))",
+    "Function('x_mass')(Symbol('t'))",
+    "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))"
+  ],
+  "solved_variables": [
+    "Function('f1_damper')(Symbol('t'))",
+    "Function('f1_spring')(Symbol('t'))",
+    "Function('f2_damper')(Symbol('t'))",
+    "Function('f2_spring')(Symbol('t'))",
+    "Function('f_ground')(Symbol('t'))",
+    "Function('f_mass')(Symbol('t'))",
+    "Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Function('x1_spring')(Symbol('t'))",
+    "Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Function('x2_spring')(Symbol('t'))",
+    "Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))"
+  ],
+  "active_equations": [
+    "Add(Mul(Symbol('m_mass'), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))), Mul(Integer(-1), Function('f_mass')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Symbol('k_spring'), Add(Function('x1_spring')(Symbol('t')), Mul(Integer(-1), Function('x2_spring')(Symbol('t'))))), Mul(Integer(-1), Function('f2_spring')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Function('f1_spring')(Symbol('t'))), Mul(Integer(-1), Function('f2_spring')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Symbol('c_damper'), Add(Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1))), Mul(Integer(-1), Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))))), Mul(Integer(-1), Function('f2_damper')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Function('f1_damper')(Symbol('t'))), Mul(Integer(-1), Function('f2_damper')(Symbol('t'))))",
+    "Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Add(Mul(Integer(-1), Function('x2_spring')(Symbol('t'))), Function('x_mass')(Symbol('t')))",
+    "Add(Mul(Integer(-1), Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1))))",
+    "Add(Function('f2_damper')(Symbol('t')), Function('f2_spring')(Symbol('t')), Function('f_mass')(Symbol('t')))",
+    "Add(Mul(Integer(-1), Function('x1_spring')(Symbol('t'))), Function('x_ground')(Symbol('t')))",
+    "Add(Mul(Integer(-1), Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1))))",
+    "Add(Function('f1_damper')(Symbol('t')), Function('f1_spring')(Symbol('t')), Function('f_ground')(Symbol('t')))"
+  ],
+  "equations": [
+    "Add(Mul(Symbol('m_mass'), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))), Mul(Integer(-1), Function('f_mass')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Symbol('k_spring'), Add(Function('x1_spring')(Symbol('t')), Mul(Integer(-1), Function('x2_spring')(Symbol('t'))))), Mul(Integer(-1), Function('f2_spring')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Function('f1_spring')(Symbol('t'))), Mul(Integer(-1), Function('f2_spring')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Symbol('c_damper'), Add(Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1))), Mul(Integer(-1), Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))))), Mul(Integer(-1), Function('f2_damper')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Function('f1_damper')(Symbol('t'))), Mul(Integer(-1), Function('f2_damper')(Symbol('t'))))",
+    "Function('x_ground')(Symbol('t'))",
+    "Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Add(Mul(Integer(-1), Function('x2_spring')(Symbol('t'))), Function('x_mass')(Symbol('t')))",
+    "Add(Mul(Integer(-1), Function('x2_damper')(Symbol('t'))), Function('x_mass')(Symbol('t')))",
+    "Add(Mul(Integer(-1), Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1))))",
+    "Add(Function('f2_damper')(Symbol('t')), Function('f2_spring')(Symbol('t')), Function('f_mass')(Symbol('t')))",
+    "Add(Mul(Integer(-1), Function('x1_spring')(Symbol('t'))), Function('x_ground')(Symbol('t')))",
+    "Add(Mul(Integer(-1), Function('x1_damper')(Symbol('t'))), Function('x_ground')(Symbol('t')))",
+    "Add(Mul(Integer(-1), Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1))))",
+    "Add(Function('f1_damper')(Symbol('t')), Function('f1_spring')(Symbol('t')), Function('f_ground')(Symbol('t')))"
+  ],
+  "matching": {
+    "0": "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
+    "1": "Function('f2_spring')(Symbol('t'))",
+    "2": "Function('f1_spring')(Symbol('t'))",
+    "3": "Function('f2_damper')(Symbol('t'))",
+    "4": "Function('f1_damper')(Symbol('t'))",
+    "5": "Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "6": "Function('x2_spring')(Symbol('t'))",
+    "7": "Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "8": "Function('f_mass')(Symbol('t'))",
+    "9": "Function('x1_spring')(Symbol('t'))",
+    "10": "Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "11": "Function('f_ground')(Symbol('t'))"
+  },
+  "differentiation_indices": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    0,
+    0,
+    1,
+    0
+  ],
+  "components": [
+    {
+      "name": "mass",
+      "domain": "continuous"
+    },
+    {
+      "name": "spring",
+      "domain": "continuous"
+    },
+    {
+      "name": "damper",
+      "domain": "continuous"
+    },
+    {
+      "name": "ground",
+      "domain": "continuous"
+    }
+  ],
+  "derivatives": {
+    "Function('x1_damper')(Symbol('t'))": "Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Function('x2_damper')(Symbol('t'))": "Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Function('x_ground')(Symbol('t'))": "Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Function('x_mass')(Symbol('t'))": "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))"
+  },
+  "solved_assignments": {
+    "Function('f1_damper')(Symbol('t'))": "Mul(Integer(-1), Symbol('c_damper'), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1))))",
+    "Function('f1_spring')(Symbol('t'))": "Mul(Symbol('k_spring'), Add(Function('x_ground')(Symbol('t')), Mul(Integer(-1), Function('x_mass')(Symbol('t')))))",
+    "Function('f2_damper')(Symbol('t'))": "Mul(Symbol('c_damper'), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1))))",
+    "Function('f2_spring')(Symbol('t'))": "Mul(Symbol('k_spring'), Add(Mul(Integer(-1), Function('x_ground')(Symbol('t'))), Function('x_mass')(Symbol('t'))))",
+    "Function('f_ground')(Symbol('t'))": "Add(Mul(Symbol('c_damper'), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Integer(-1), Symbol('k_spring'), Function('x_ground')(Symbol('t'))), Mul(Symbol('k_spring'), Function('x_mass')(Symbol('t'))))",
+    "Function('f_mass')(Symbol('t'))": "Add(Mul(Integer(-1), Symbol('c_damper'), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Symbol('k_spring'), Function('x_ground')(Symbol('t'))), Mul(Integer(-1), Symbol('k_spring'), Function('x_mass')(Symbol('t'))))",
+    "Function('x1_spring')(Symbol('t'))": "Function('x_ground')(Symbol('t'))",
+    "Function('x2_spring')(Symbol('t'))": "Function('x_mass')(Symbol('t'))",
+    "Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Integer(0)",
+    "Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Integer(0)",
+    "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))": "Mul(Pow(Symbol('m_mass'), Integer(-1)), Add(Mul(Integer(-1), Symbol('c_damper'), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Symbol('k_spring'), Function('x_ground')(Symbol('t'))), Mul(Integer(-1), Symbol('k_spring'), Function('x_mass')(Symbol('t')))))"
+  },
+  "ode_assignments": {
+    "Derivative(Function('x1_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Integer(0)",
+    "Derivative(Function('x2_damper')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Derivative(Function('x_ground')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Integer(0)",
+    "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))": "Mul(Pow(Symbol('m_mass'), Integer(-1)), Add(Mul(Integer(-1), Symbol('c_damper'), Derivative(Function('x_mass')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Symbol('k_spring'), Function('x_ground')(Symbol('t'))), Mul(Integer(-1), Symbol('k_spring'), Function('x_mass')(Symbol('t')))))"
+  },
+  "system_form": "ODE",
+  "index": 0
+}

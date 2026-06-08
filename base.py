@@ -5,6 +5,7 @@ class Component(object):
         self.params = []        
         self._param_meta = {}   
         self.equations = []
+        self.domain = 'continuous'
 
     def register_param(self, param_name, sym, default):
         self.params.append(sym)
@@ -78,5 +79,14 @@ class System(object):
         dae.states = self.states.copy()
         dae.params = self.params.copy()
         dae.equations = self.equations.copy()
+        
+        # Keep track of component metadata (for domains, parameters, etc.)
+        dae.components = [
+            {
+                'name': comp.name,
+                'domain': getattr(comp, 'domain', 'continuous')
+            }
+            for comp in self.components
+        ]
             
         return dae

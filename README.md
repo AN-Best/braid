@@ -20,7 +20,7 @@ Braid is free for non-commercial use, including academic research, personal proj
 
 ## Motivation
 
-Most physics simulators for RL either lock you into rigid-body dynamics (MuJoCo, Brax) or require you to manually derive equations of motion. Braid takes a different approach: you describe your system using an acausal component library, and the compiler handles the rest — DAE assembly, index reduction, and code generation to JAX.
+Most physics simulators for RL either lock you into rigid-body dynamics (MuJoCo, Brax) or require you to manually derive equations of motion. Braid takes a different approach: you describe your system using an acausal component library, and the compiler handles the rest — DAE assembly, index reduction, tearing/elimination, and code generation to JAX.
 
 The result is a differentiable, GPU-parallel ODE that can be vmapped over thousands of rollouts simultaneously.
 
@@ -32,70 +32,141 @@ The result is a differentiable, GPU-parallel ODE that can be vmapped over thousa
 Components (Spring, Mass, Damper)
     ↓ Node() connections
 SymPy DAE assembly (SystemDAE)
-    ↓ Order Reduction & Pantelides Algorithm [WIP]
-Explicit ODE [WIP]
-    ↓ sympy2jax / lambdify [Planned]
-JAX function
-    ↓ jax.vmap + Diffrax
-GPU-parallel trajectories
+    ↓ Order Reduction Pass
+First-order DAE System
+    ↓ Pantelides Index Reduction Pass (Structural DAE to index-1 DAE)
+Index-1 DAE (Active Equations)
+    ↓ Tearing Pass (Symbolic solver)
+Explicit solved assignments
+    ↓ Elimination & Symbolic Simplification Pass
+Minimal ODE assignments (ode_assignments)
+    ↓ JSON IR Serialization (json_ir.py)
+JSON Intermediate Representation (srepr-encoded)
+    ↓ sympy2jax / JAX Code Gen [Planned]
+JAX function (jax.vmap + Diffrax)
 ```
 
 ---
 
-## Example: Mass-Spring-Damper Assembly
+## Features & Simulator Backends
+
+Braid has a fully implemented compiler middle-end and a high-performance numerical simulation engine:
+
+- **Order Reduction Pass**: Lowers 2nd-order ODE systems into 1st-order systems by introducing velocity states.
+- **Pantelides Index Reduction Pass**: Employs structural DAE index reduction using maximum bipartite matching and directed alternating graph reachability traversal (backed by `networkx`). Differentiates constraints to reduce the DAE system to index-1.
+- **Tearing Pass**: Symbolically solves the DAE active equations for all matched solved variables (algebraic unknowns and state derivatives).
+- **Elimination & Symbolic Simplification Pass**:
+  - Automatically identifies state derivative definitions of the form `Derivative(A, t) = B` to eliminate redundant states.
+  - Generates a minimal state derivative mapping (`ode_assignments`) for numerical ODE integration.
+  - Symbols are simplified using SymPy's `sp.simplify`.
+- **JSON Intermediate Representation (IR)**: Serializes/deserializes compiled `SystemDAE` structures using SymPy's `srepr` encoding to preserve exact symbolic representations across languages.
+- **Numerical Simulation Backend (`simulation.py`)**:
+  - **NumPy/SciPy Backend**: Integrates ODEs using SciPy's built-in solvers (`RK45`, `BDF`, etc.) or custom explicit/implicit steppers (`euler`, `rk4`, `backward_euler`).
+  - **PyTorch Backend**: Supports custom explicit/implicit solvers running on any PyTorch device (CPU or CUDA GPU).
+  - **GPU Acceleration & Batch Parallelization**: Supports batched initial conditions `y0` of shape `(batch_size, num_states)` and batched parameters `params` of shape `(batch_size, num_params)`. This allows running thousands of parallel simulations simultaneously on the GPU in a single vectorized pass.
+
+---
+
+## Installation & Setup
+
+You can set up your environment using either **pip** or **conda**:
+
+### Using Conda (Recommended for GPU/PyTorch users)
+```bash
+conda env create -f environment.yml
+conda activate braid
+```
+
+### Using Pip
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Example: Compilation and Serialization
+
+Here is how to compile a component system into an explicit ODE and serialize it to JSON:
 
 ```python
+import sympy as sp
 from components.linear_mechanical_1D import Mass, Spring, Damper, Ground
 from base import System, Node
-from index_reduction import order_reduction_pass
+from index_reduction import (
+    order_reduction_pass,
+    pantelides_pass,
+    tearing_pass,
+    simplification_pass
+)
+from json_ir import to_json
 
-# Define components
+# 1. Define components
 mass   = Mass('mass', m=2.0)
 spring = Spring('spring', k=10.0)
 damper = Damper('damper', c=0.2)
 ground = Ground('ground')
 
-# Assemble system
+# 2. Assemble system
 system = System([mass, spring, damper, ground])
 Node(system, [(mass, 'p'), (spring, 'p2'), (damper, 'p2')])
 Node(system, [(ground, 'p'), (spring, 'p1'), (damper, 'p1')])
 
-# Convert to SymPy DAE and perform order reduction
+# 3. Convert to SymPy DAE
 dae = system.to_dae()
+
+# 4. Perform compiler passes
 reduced_dae = order_reduction_pass(dae)
+index_reduced_dae = pantelides_pass(reduced_dae)
+torn_dae = tearing_pass(index_reduced_dae)
+simplified_dae = simplification_pass(torn_dae)
 
-# [WIP] Pantelides index reduction and JAX compilation...
+# 5. Serialize to JSON IR
+json_str = to_json(simplified_dae)
+with open("mass_spring_damper_ode.json", "w") as f:
+    f.write(json_str)
+
+print("System compiled and saved successfully!")
 ```
 
 ---
 
-## Current State (Architecture Transition)
+## Example: Simulating the Compiled System (CPU or Parallel GPU)
 
-**Note:** The project is currently transitioning its core backend from `CasADi` to `SymPy` to better support high-index DAE structural analysis (e.g. Index-3 mechanical systems) via the Pantelides algorithm.
+You can easily integrate your compiled system using the simulation engine:
 
-**What works:**
+```python
+from simulation import simulate_system
+import numpy as np
 
-- 1D translational mechanical components: `Mass`, `Spring`, `Damper`, `Ground`, `Force` using native `sympy.Derivative` objects.
-- Acausal port-based connections via `Node` with automatic force summation and position/velocity matching.
-- Automatic DAE assembly from the component graph into a `SystemDAE` object.
-- **Order Reduction:** Automatic lowering of 2nd-order ODE constraints into 1st-order systems.
+# Let's say you compiled the pendulum DAE to `simplified_dae`
+t_span = (0.0, 1.5)
 
-**Known limitations / WIP:**
+# --- 1. Single CPU simulation (using NumPy) ---
+y0 = [1.0, 0.0, 0.0, 0.0, 0.0]       # initial states
+params_val = [1.0, 9.81, 1.0]        # m, g, L
+sol = simulate_system(simplified_dae, t_span, y0, params_val, backend='numpy', method='RK45')
 
-- Pantelides algorithm for structural index reduction is under active development.
-- `compile.py` (CasADi → JAX via JAXADi) is currently deprecated and awaiting a SymPy-to-JAX rewrite.
-- Only 1D translational mechanical domain implemented.
-- No Gymnasium wrapper yet.
+# --- 2. Parallel batched GPU simulation (using PyTorch) ---
+batch_size = 1000
+L_vals = np.linspace(0.5, 2.0, batch_size)
 
----
+# y0 batch: shape (batch_size, num_states)
+y0_batch = np.zeros((batch_size, len(simplified_dae.states)))
+y0_batch[:, 0] = L_vals  # x starts at L
 
-## Dependencies
+# params batch: shape (batch_size, num_params)
+params_batch = np.zeros((batch_size, 3))
+params_batch[:, 0] = 1.0     # m = 1.0
+params_batch[:, 1] = 9.81    # g = 9.81
+params_batch[:, 2] = L_vals  # L
 
-```
-sympy
-numpy
-jax (Planned)
-diffrax (Planned)
+# Simulate 1000 pendulums simultaneously on the GPU!
+sol_batch = simulate_system(
+    simplified_dae, t_span, y0_batch, params_batch,
+    backend='pytorch', method='rk4', device='cuda', num_steps=1000
+)
+# Resulting y shape: (batch_size, num_states, num_steps + 1)
+print("Parallel simulation shape:", sol_batch.y.shape)
 ```
 
 ---
@@ -105,11 +176,19 @@ diffrax (Planned)
 ```
 braid/
     components/
-        linear_mechanical_1D.py   # Mass, Spring, Damper, Ground, Force
-    base.py                       # System, Node, Component
-    sym_dae.py                    # SymPy SystemDAE representation
-    index_reduction.py            # Order reduction pass (Pantelides WIP)
-    compile.py                    # [Deprecated] CasADi → JAX compiler
+        linear_mechanical_1D.py   # Mass, Spring, Damper, Ground, Force components
+    base.py                       # System, Node, Component base classes
+    sym_dae.py                    # SymPy SystemDAE representation & metadata
+    index_reduction.py            # Order reduction, Pantelides, Tearing, Simplification passes
+    simulation.py                 # Multi-backend simulation engine (NumPy, PyTorch, GPU, Batched)
+    json_ir.py                    # JSON IR serializer/deserializer using srepr
+    requirements.txt              # Standard python pip requirements
+    environment.yml               # Conda environment definition
+    test/
+        test_pantelides.py        # Verification of compiler passes (Pendulum & Mass-Spring-Damper)
+        test_order_reduction.py   # Verification of order reduction logic
+        test_system_assembly.py   # Verification of acausal component compilation
+        test_simulation.py        # Verification of simulation solvers and GPU batching
 ```
 
 ---

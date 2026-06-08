@@ -1,0 +1,77 @@
+{
+  "t": "Symbol('t')",
+  "params": [
+    "Symbol('m')",
+    "Symbol('g')",
+    "Symbol('L')"
+  ],
+  "states": [
+    "Function('x')(Symbol('t'))",
+    "Function('x_dot')(Symbol('t'))",
+    "Function('y')(Symbol('t'))",
+    "Function('y_dot')(Symbol('t'))"
+  ],
+  "solved_variables": [
+    "Function('lambda')(Symbol('t'))",
+    "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
+    "Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
+    "Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))"
+  ],
+  "active_equations": [
+    "Add(Mul(Symbol('m'), Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Function('lambda')(Symbol('t')), Function('x')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Symbol('g'), Symbol('m')), Mul(Symbol('m'), Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Function('lambda')(Symbol('t')), Function('y')(Symbol('t'))))",
+    "Add(Mul(Integer(2), Function('x')(Symbol('t')), Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))), Mul(Integer(2), Function('y')(Symbol('t')), Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))), Mul(Integer(2), Pow(Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(1))), Integer(2))), Mul(Integer(2), Pow(Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(1))), Integer(2))))",
+    "Add(Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2))), Mul(Integer(-1), Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))))",
+    "Add(Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2))), Mul(Integer(-1), Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))))"
+  ],
+  "equations": [
+    "Add(Mul(Symbol('m'), Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Function('lambda')(Symbol('t')), Function('x')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Symbol('g'), Symbol('m')), Mul(Symbol('m'), Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Function('lambda')(Symbol('t')), Function('y')(Symbol('t'))))",
+    "Add(Mul(Integer(-1), Pow(Symbol('L'), Integer(2))), Pow(Function('x')(Symbol('t')), Integer(2)), Pow(Function('y')(Symbol('t')), Integer(2)))",
+    "Add(Mul(Integer(2), Function('x')(Symbol('t')), Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))), Mul(Integer(2), Function('y')(Symbol('t')), Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))))",
+    "Add(Mul(Integer(2), Function('x')(Symbol('t')), Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))), Mul(Integer(2), Function('y')(Symbol('t')), Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))), Mul(Integer(2), Pow(Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(1))), Integer(2))), Mul(Integer(2), Pow(Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(1))), Integer(2))))",
+    "Add(Mul(Integer(-1), Function('x_dot')(Symbol('t'))), Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(1))))",
+    "Add(Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2))), Mul(Integer(-1), Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))))",
+    "Add(Mul(Integer(-1), Function('y_dot')(Symbol('t'))), Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(1))))",
+    "Add(Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2))), Mul(Integer(-1), Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))))"
+  ],
+  "matching": {
+    "0": "Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "1": "Function('lambda')(Symbol('t'))",
+    "2": "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
+    "3": "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
+    "4": "Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))"
+  },
+  "differentiation_indices": [
+    0,
+    0,
+    2,
+    1,
+    1
+  ],
+  "components": [],
+  "derivatives": {
+    "Function('x')(Symbol('t'))": "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
+    "Function('x_dot')(Symbol('t'))": "Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Function('y')(Symbol('t'))": "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
+    "Function('y_dot')(Symbol('t'))": "Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))"
+  },
+  "solved_assignments": {
+    "Function('lambda')(Symbol('t'))": "Mul(Symbol('m'), Pow(Add(Pow(Function('x')(Symbol('t')), Integer(2)), Pow(Function('y')(Symbol('t')), Integer(2))), Integer(-1)), Add(Mul(Symbol('g'), Function('y')(Symbol('t'))), Pow(Function('x_dot')(Symbol('t')), Integer(2)), Pow(Function('y_dot')(Symbol('t')), Integer(2))))",
+    "Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Mul(Pow(Add(Pow(Function('x')(Symbol('t')), Integer(2)), Pow(Function('y')(Symbol('t')), Integer(2))), Integer(-1)), Add(Mul(Integer(-1), Symbol('g'), Function('y')(Symbol('t'))), Mul(Integer(-1), Pow(Function('x_dot')(Symbol('t')), Integer(2))), Mul(Integer(-1), Pow(Function('y_dot')(Symbol('t')), Integer(2)))), Function('x')(Symbol('t')))",
+    "Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Mul(Pow(Add(Pow(Function('x')(Symbol('t')), Integer(2)), Pow(Function('y')(Symbol('t')), Integer(2))), Integer(-1)), Add(Mul(Symbol('g'), Pow(Function('x')(Symbol('t')), Integer(2))), Mul(Integer(-1), Pow(Function('x_dot')(Symbol('t')), Integer(2)), Function('y')(Symbol('t'))), Mul(Integer(-1), Function('y')(Symbol('t')), Pow(Function('y_dot')(Symbol('t')), Integer(2)))))",
+    "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))": "Mul(Pow(Add(Pow(Function('x')(Symbol('t')), Integer(2)), Pow(Function('y')(Symbol('t')), Integer(2))), Integer(-1)), Add(Mul(Integer(-1), Symbol('g'), Function('y')(Symbol('t'))), Mul(Integer(-1), Pow(Function('x_dot')(Symbol('t')), Integer(2))), Mul(Integer(-1), Pow(Function('y_dot')(Symbol('t')), Integer(2)))), Function('x')(Symbol('t')))",
+    "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))": "Mul(Pow(Add(Pow(Function('x')(Symbol('t')), Integer(2)), Pow(Function('y')(Symbol('t')), Integer(2))), Integer(-1)), Add(Mul(Symbol('g'), Pow(Function('x')(Symbol('t')), Integer(2))), Mul(Integer(-1), Pow(Function('x_dot')(Symbol('t')), Integer(2)), Function('y')(Symbol('t'))), Mul(Integer(-1), Function('y')(Symbol('t')), Pow(Function('y_dot')(Symbol('t')), Integer(2)))))"
+  },
+  "ode_assignments": {
+    "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Function('x_dot')(Symbol('t'))",
+    "Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Mul(Pow(Add(Pow(Function('x')(Symbol('t')), Integer(2)), Pow(Function('y')(Symbol('t')), Integer(2))), Integer(-1)), Add(Mul(Integer(-1), Symbol('g'), Function('y')(Symbol('t'))), Mul(Integer(-1), Pow(Function('x_dot')(Symbol('t')), Integer(2))), Mul(Integer(-1), Pow(Function('y_dot')(Symbol('t')), Integer(2)))), Function('x')(Symbol('t')))",
+    "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Function('y_dot')(Symbol('t'))",
+    "Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))": "Mul(Pow(Add(Pow(Function('x')(Symbol('t')), Integer(2)), Pow(Function('y')(Symbol('t')), Integer(2))), Integer(-1)), Add(Mul(Symbol('g'), Pow(Function('x')(Symbol('t')), Integer(2))), Mul(Integer(-1), Pow(Function('x_dot')(Symbol('t')), Integer(2)), Function('y')(Symbol('t'))), Mul(Integer(-1), Function('y')(Symbol('t')), Pow(Function('y_dot')(Symbol('t')), Integer(2)))))"
+  },
+  "system_form": "ODE",
+  "index": 0
+}
