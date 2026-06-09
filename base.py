@@ -88,5 +88,16 @@ class System(object):
             }
             for comp in self.components
         ]
+        
+        # Populate parameter metadata mapping the string representation of each parameter to its metadata
+        dae.param_meta = {}
+        for comp in self.components:
+            for param_name, meta in getattr(comp, '_param_meta', {}).items():
+                sym_str = sp.srepr(meta['sym'])
+                dae.param_meta[sym_str] = {
+                    'name': param_name,
+                    'component': comp.name,
+                    'default': meta['default']
+                }
             
         return dae

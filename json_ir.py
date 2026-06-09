@@ -30,6 +30,7 @@ def to_json(dae: SystemDAE) -> str:
         "matching": {str(k): sp.srepr(v) for k, v in dae.matching.items()},
         "differentiation_indices": getattr(dae, "differentiation_indices", []),
         "components": getattr(dae, "components", []),
+        "param_meta": getattr(dae, "param_meta", {}),
         "derivatives": {sp.srepr(k): sp.srepr(v) for k, v in dae.derivatives.items()},
         "solved_assignments": {sp.srepr(k): sp.srepr(v) for k, v in solved_assignments.items()},
         "ode_assignments": {sp.srepr(k): sp.srepr(v) for k, v in getattr(dae, "ode_assignments", {}).items()},
@@ -54,6 +55,7 @@ def from_json(json_str: str) -> SystemDAE:
     dae.matching = {int(k): sp.sympify(v) for k, v in data["matching"].items()}
     dae.differentiation_indices = data["differentiation_indices"]
     dae.components = data["components"]
+    dae.param_meta = data.get("param_meta", {})
     dae.derivatives = {sp.sympify(k): sp.sympify(v) for k, v in data["derivatives"].items()}
     dae.solved_assignments = {sp.sympify(k): sp.sympify(v) for k, v in data.get("solved_assignments", {}).items()}
     dae.ode_assignments = {sp.sympify(k): sp.sympify(v) for k, v in data.get("ode_assignments", {}).items()}

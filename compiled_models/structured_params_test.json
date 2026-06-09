@@ -117,7 +117,7 @@
     "Symbol('c_damper')": {
       "name": "c",
       "component": "damper",
-      "default": 1.0
+      "default": 3.0
     }
   },
   "derivatives": {

@@ -280,8 +280,154 @@ def test_parallel_gpu_simulation():
         np.testing.assert_allclose(energy, 0.0, atol=1.5e-2)
             
     print(f"Parallel GPU simulation test on device {device} passed successfully!")
+ 
+def test_simulation_with_structured_params():
+    print("\n--- Testing Structured Parameters (Dict & Defaults) ---")
+    mass = Mass('mass', m=2.0)
+    spring = Spring('spring', k=10.0)
+    damper = Damper('damper', c=3.0)
+    ground = Ground('ground')
+    
+    system = System([mass, spring, damper, ground])
+    Node(system, [(mass, 'p'), (spring, 'p2'), (damper, 'p2')])
+    Node(system, [(ground, 'p'), (spring, 'p1'), (damper, 'p1')])
+    
+    dae = system.to_dae()
+    red = pantelides_pass(dae)
+    torn = tearing_pass(red)
+    simp = simplification_pass(torn)
+    
+    from json_ir import to_json
+    json_str = to_json(simp)
+    
+    compiled_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "compiled_models")
+    os.makedirs(compiled_dir, exist_ok=True)
+    json_path = os.path.join(compiled_dir, "structured_params_test.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        f.write(json_str)
+        
+    state_to_idx = {s: idx for idx, s in enumerate(simp.states)}
+    x_mass = [s for s in simp.states if s.func.__name__ == 'x_mass'][0]
+    
+    y0 = [0.0] * len(simp.states)
+    y0[state_to_idx[x_mass]] = 2.0
+    t_span = (0.0, 5.0)
+    
+    # 1. Test simulation using default values (params=None)
+    sol_defaults = simulate_system(json_path, t_span, y0, params=None, backend='numpy')
+    assert sol_defaults.success
+    
+    # 2. Test simulation overrides using symbol names as keys
+    sol_dict_sym = simulate_system(json_path, t_span, y0, params={"m_mass": 2.0, "k_spring": 10.0, "c_damper": 3.0}, backend='numpy')
+    assert sol_dict_sym.success
+    np.testing.assert_allclose(sol_defaults.y, sol_dict_sym.y)
+    
+    # 3. Test simulation overrides using component-dot-parameter style
+    sol_dict_comp = simulate_system(json_path, t_span, y0, params={"mass.m": 2.0, "spring.k": 10.0, "damper.c": 3.0}, backend='numpy')
+    assert sol_dict_comp.success
+    np.testing.assert_allclose(sol_defaults.y, sol_dict_comp.y)
+    
+    # 4. Test partial overrides (others fall back to defaults)
+    sol_dict_partial = simulate_system(json_path, t_span, y0, params={"damper.c": 3.0}, backend='numpy')
+    assert sol_dict_partial.success
+    np.testing.assert_allclose(sol_defaults.y, sol_dict_partial.y)
+
+    # 5. Test batch simulation with parameter sweeps using dictionaries
+    batch_size = 4
+    k_vals = np.linspace(5.0, 15.0, batch_size)
+    y0_batch = np.zeros((batch_size, len(simp.states)))
+    for b in range(batch_size):
+        y0_batch[b, state_to_idx[x_mass]] = 2.0
+        
+    sol_batch = simulate_system(
+        json_path, t_span, y0_batch, 
+        params={"mass.m": 2.0, "spring.k": k_vals, "damper.c": 3.0}, 
+        backend='pytorch', method='rk4', num_steps=1000
+    )
+    assert sol_batch.success
+    assert sol_batch.y.shape == (batch_size, len(simp.states), 1001)
+    
+    print("Structured parameters tests passed successfully!")
+
+def test_differentiation_wrt_parameters():
+    import torch
+    from simulation import lambdify_system
+    print("\n--- Testing Differentiability W.R.T. Parameters ---")
+    mass = Mass('mass', m=2.0)
+    spring = Spring('spring', k=10.0)
+    damper = Damper('damper', c=3.0)
+    ground = Ground('ground')
+    
+    system = System([mass, spring, damper, ground])
+    Node(system, [(mass, 'p'), (spring, 'p2'), (damper, 'p2')])
+    Node(system, [(ground, 'p'), (spring, 'p1'), (damper, 'p1')])
+    
+    dae = system.to_dae()
+    red = pantelides_pass(dae)
+    torn = tearing_pass(red)
+    simp = simplification_pass(torn)
+    
+    state_to_idx = {s: idx for idx, s in enumerate(simp.states)}
+    x_mass = [s for s in simp.states if s.func.__name__ == 'x_mass'][0]
+    
+    y0 = [0.0] * len(simp.states)
+    y0[state_to_idx[x_mass]] = 2.0
+    
+    ode_func_raw = lambdify_system(simp, 'torch')
+    
+    # Define PyTorch parameters with gradient tracking
+    k_param = torch.tensor(10.0, dtype=torch.float64, requires_grad=True)
+    m_param = torch.tensor(2.0, dtype=torch.float64, requires_grad=True)
+    
+    # Set up parameter dictionary overrides
+    params_dict = {"mass.m": m_param, "spring.k": k_param, "damper.c": 3.0}
+    
+    # Emulate the parameter conversion mapping using SystemDAE param_meta
+    flat_params = []
+    param_meta = getattr(simp, "param_meta", {})
+    for p in simp.params:
+        sym_repr = sp.srepr(p)
+        meta = param_meta[sym_repr]
+        comp_dot_name = f"{meta['component']}.{meta['name']}"
+        val = params_dict[comp_dot_name]
+        flat_params.append(val)
+        
+    torch_params = [val if isinstance(val, torch.Tensor) else torch.tensor(val, dtype=torch.float64) for val in flat_params]
+    params_tensor = torch.stack(torch_params)
+    
+    # Run a step of the ODE function
+    t_val = 0.0
+    y_vec = torch.tensor(y0, dtype=torch.float64)
+    y_list_input = [y_vec[i] for i in range(len(y_vec))]
+    params_list_input = [params_tensor[i] for i in range(len(params_tensor))]
+    
+    res = ode_func_raw(t_val, y_list_input, params_list_input)
+    res_tensor = torch.stack([torch.as_tensor(r, dtype=torch.float64) for r in res])
+    
+    # Compute a loss and backpropagate
+    loss = res_tensor.sum()
+    loss.backward()
+    
+    assert k_param.grad is not None
+    assert m_param.grad is not None
+    print(f"Gradients computed successfully! dLoss/dK = {k_param.grad.item()}, dLoss/dM = {m_param.grad.item()}")
+
+    # Verify simulate_system runs with dictionary of tensors (converts and executes successfully)
+    sol = simulate_system(
+        dae = simp,
+        t_span = (0.0, 1.0),
+        y0 = y0,
+        params = {"mass.m": m_param.detach(), "spring.k": k_param.detach(), "damper.c": 3.0},
+        backend = 'pytorch',
+        method = 'rk4',
+        num_steps = 100
+    )
+    assert sol.success
+    print("simulate_system executed successfully with dictionary containing PyTorch tensors!")
 
 if __name__ == "__main__":
     test_simulation_pendulum()
     test_simulation_mass_spring_damper()
     test_parallel_gpu_simulation()
+    test_simulation_with_structured_params()
+    test_differentiation_wrt_parameters()

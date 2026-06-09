@@ -12,6 +12,7 @@ class SystemDAE:
         self.matching = {}                  # Map of active equation index to solved variable
         self.differentiation_indices = []  # List of differentiation counts per original equation
         self.components = []                # List of dictionaries containing component metadata
+        self.param_meta = {}                # Dict mapping parameter symbol srepr to metadata dict
         self.solved_assignments = {}        # Dict mapping solved variable to explicit expression (from tearing)
         self.ode_assignments = {}           # Dict mapping state derivative to simplified explicit expression
 
@@ -27,6 +28,7 @@ class SystemDAE:
         new_dae.matching = dict(self.matching)
         new_dae.differentiation_indices = list(self.differentiation_indices)
         new_dae.components = [dict(c) for c in self.components]
+        new_dae.param_meta = dict(self.param_meta)
         new_dae.solved_assignments = dict(self.solved_assignments)
         new_dae.ode_assignments = dict(self.ode_assignments)
         return new_dae

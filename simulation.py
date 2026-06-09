@@ -89,6 +89,108 @@ def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, devic
             json_str = path_str
         dae = from_json(json_str)
 
+    # Resolve params if passed as a dictionary or None (to use defaults)
+    if isinstance(params, dict) or params is None:
+        param_dict = params or {}
+        flat_params = []
+        param_meta = getattr(dae, "param_meta", {})
+        
+        for p in dae.params:
+            val = None
+            found = False
+            
+            # 1. Match by Symbol object key
+            if p in param_dict:
+                val = param_dict[p]
+                found = True
+            # 2. Match by Symbol name string key
+            elif p.name in param_dict:
+                val = param_dict[p.name]
+                found = True
+            # 3. Match by component-dot-parameter key if param_meta is available
+            elif param_meta:
+                sym_repr = sp.srepr(p)
+                if sym_repr in param_meta:
+                    meta = param_meta[sym_repr]
+                    comp_dot_name = f"{meta['component']}.{meta['name']}"
+                    if comp_dot_name in param_dict:
+                        val = param_dict[comp_dot_name]
+                        found = True
+                    elif 'default' in meta:
+                        val = meta['default']
+                        found = True
+            
+            if not found:
+                raise ValueError(
+                    f"Parameter '{p.name}' is missing and has no default value. "
+                    f"Please specify it in your params dictionary."
+                )
+            flat_params.append(val)
+            
+        # Check if there is any batched parameter (i.e. if any value is an array/list of size > 1)
+        def is_seq(v):
+            if isinstance(v, (str, bytes)):
+                return False
+            try:
+                len(v)
+                return True
+            except TypeError:
+                return False
+                
+        is_batched = False
+        batch_size = None
+        for val in flat_params:
+            if is_seq(val):
+                is_batched = True
+                batch_size = len(val)
+                break
+        
+        # Detect if any parameter is a PyTorch tensor to preserve gradients/autograd graph
+        has_torch_tensor = False
+        for val in flat_params:
+            if hasattr(val, 'requires_grad') or type(val).__name__ == 'Tensor':
+                has_torch_tensor = True
+                break
+                
+        if has_torch_tensor:
+            import torch
+            target_device = None
+            target_dtype = torch.float64
+            for val in flat_params:
+                if isinstance(val, torch.Tensor):
+                    target_device = val.device
+                    target_dtype = val.dtype
+                    break
+            
+            torch_params = []
+            for val in flat_params:
+                if isinstance(val, torch.Tensor):
+                    torch_params.append(val.to(device=target_device, dtype=target_dtype))
+                else:
+                    torch_params.append(torch.tensor(val, device=target_device, dtype=target_dtype))
+                    
+            if is_batched:
+                batched_tensors = []
+                for val in torch_params:
+                    if val.dim() > 0:
+                        batched_tensors.append(val)
+                    else:
+                        batched_tensors.append(val.expand(batch_size))
+                params = torch.stack(batched_tensors, dim=-1)
+            else:
+                params = torch.stack(torch_params)
+        else:
+            if is_batched:
+                batched_list = []
+                for val in flat_params:
+                    if is_seq(val):
+                        batched_list.append(np.array(val))
+                    else:
+                        batched_list.append(np.full(batch_size, val))
+                params = np.column_stack(batched_list)
+            else:
+                params = np.array(flat_params)
+
     backend_lower = backend.lower()
     
     if backend_lower in ('numpy', 'scipy'):

@@ -78,8 +78,17 @@ def simulate_torch(ode_func_raw, jac_func_raw, t_span, y0, params, method, devic
             params_list_input = [params_tensor[i] for i in range(len(params_tensor))]
             
         res = ode_func_raw(t_val, y_list_input, params_list_input)
+        
         stack_dim = -1 if is_batched else 0
-        return torch.stack([torch.as_tensor(r, dtype=torch.float64, device=device) for r in res], dim=stack_dim)
+        
+        tensors = []
+        for r in res:
+            t_r = torch.as_tensor(r, dtype=torch.float64, device=device)
+            if is_batched and t_r.dim() == 0:
+                t_r = t_r.expand(y_vec.shape[0])
+            tensors.append(t_r)
+            
+        return torch.stack(tensors, dim=stack_dim)
         
     def jac_fn(t_val, y_vec):
         if is_batched:
