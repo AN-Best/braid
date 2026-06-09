@@ -5,7 +5,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from components.linear_mechanical_1D import Mass, Spring, Damper, Ground
 from base import System, Node
-from index_reduction import order_reduction_pass
 
 def test_assembly():
     print("Building Mass-Spring-Damper System...")
@@ -25,14 +24,9 @@ def test_assembly():
     print("\n--- Original Equations ---")
     for eq in dae.equations:
         print(eq)
-        
-    print("\n--- After Order Reduction ---")
-    reduced_dae = order_reduction_pass(dae)
-    for eq in reduced_dae.equations:
-        print(eq)
 
-    print("\nStates count:", len(reduced_dae.states))
-    print("Equations count:", len(reduced_dae.equations))
+    print("\nStates count:", len(dae.states))
+    print("Equations count:", len(dae.equations))
 
 if __name__ == "__main__":
     test_assembly()

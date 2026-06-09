@@ -32,8 +32,6 @@ The result is a differentiable, GPU-parallel ODE that can be evaluated over thou
 Components (Spring, Mass, Damper)
     ↓ Node() connections
 SymPy DAE assembly (SystemDAE)
-    ↓ Order Reduction Pass
-First-order DAE System
     ↓ Pantelides Index Reduction Pass (Structural DAE to index-1 DAE)
 Index-1 DAE (Active Equations)
     ↓ Tearing Pass (Symbolic solver)
@@ -52,7 +50,6 @@ Numeric simulation functions (vmap / parallel batch execution)
 
 Braid has a fully implemented compiler middle-end and a high-performance numerical simulation engine:
 
-- **Order Reduction Pass**: Lowers 2nd-order ODE systems into 1st-order systems by introducing velocity states.
 - **Pantelides Index Reduction Pass**: Employs structural DAE index reduction using maximum bipartite matching and directed alternating graph reachability traversal (backed by `networkx`). Differentiates constraints to reduce the DAE system to index-1.
 - **Tearing Pass**: Symbolically solves the DAE active equations for all matched solved variables (algebraic unknowns and state derivatives).
 - **Elimination & Symbolic Simplification Pass**:
@@ -60,9 +57,18 @@ Braid has a fully implemented compiler middle-end and a high-performance numeric
   - Generates a minimal state derivative mapping (`ode_assignments`) for numerical ODE integration.
   - Symbols are simplified using SymPy's `sp.simplify`.
 - **JSON Intermediate Representation (IR)**: Serializes/deserializes compiled `SystemDAE` structures using SymPy's `srepr` encoding to preserve exact symbolic representations across languages.
-- **Numerical Simulation Backend (`simulation.py`)**:
-  - **NumPy/SciPy Backend**: Integrates ODEs using SciPy's built-in solvers (`RK45`, `BDF`, etc.) or custom explicit/implicit steppers (`euler`, `rk4`, `backward_euler`).
-  - **PyTorch Backend**: Supports custom explicit/implicit solvers running on any PyTorch device (CPU or CUDA GPU).
+- **Numerical Simulation Backend (`simulation.py` and `backends/` folder)**:
+  - **NumPy Backend (`backends/numpy_backend.py`)**: Designed for CPU-based simulation.
+    - *SciPy Integrator*: Uses SciPy's `scipy.integrate.solve_ivp` to support standard adaptive-step solvers (e.g., `RK45`, `BDF`, `LSODA`, `Radau`, etc.). The analytical Jacobian derived symbolically is automatically supplied to stiff solvers (`Radau`, `BDF`, `LSODA`) to speed up integration.
+    - *Custom Fixed-Step Solvers*:
+      - Forward Euler (`euler`)
+      - Runge-Kutta 4th Order (`rk4`)
+      - Implicit Backward Euler (`backward_euler` utilizing SciPy's `scipy.optimize.root` solver with the analytical Jacobian for accelerated root-finding)
+  - **PyTorch Backend (`backends/torch_backend.py`)**: Optimized for GPU-parallel execution and batched rollouts.
+    - *Custom Fixed-Step Solvers*:
+      - Forward Euler (`euler`)
+      - Runge-Kutta 4th Order (`rk4`)
+      - Implicit Backward Euler (`backward_euler` using a custom on-device Newton-Raphson solver that evaluates the symbolically compiled analytical Jacobian, eliminating PyTorch autograd graph-tracing overhead and improving performance by ~30%)
   - **GPU Acceleration & Batch Parallelization**: Supports batched initial conditions `y0` of shape `(batch_size, num_states)` and batched parameters `params` of shape `(batch_size, num_params)`. This allows running thousands of parallel simulations simultaneously on the GPU in a single vectorized pass.
 
 ---
@@ -93,7 +99,6 @@ import sympy as sp
 from components.linear_mechanical_1D import Mass, Spring, Damper, Ground
 from base import System, Node
 from index_reduction import (
-    order_reduction_pass,
     pantelides_pass,
     tearing_pass,
     simplification_pass
@@ -115,8 +120,7 @@ Node(system, [(ground, 'p'), (spring, 'p1'), (damper, 'p1')])
 dae = system.to_dae()
 
 # 4. Perform compiler passes
-reduced_dae = order_reduction_pass(dae)
-index_reduced_dae = pantelides_pass(reduced_dae)
+index_reduced_dae = pantelides_pass(dae)
 torn_dae = tearing_pass(index_reduced_dae)
 simplified_dae = simplification_pass(torn_dae)
 
@@ -179,14 +183,16 @@ braid/
         linear_mechanical_1D.py   # Mass, Spring, Damper, Ground, Force components
     base.py                       # System, Node, Component base classes
     sym_dae.py                    # SymPy SystemDAE representation & metadata
-    index_reduction.py            # Order reduction, Pantelides, Tearing, Simplification passes
-    simulation.py                 # Multi-backend simulation engine (NumPy, PyTorch, GPU, Batched)
+    index_reduction.py            # Pantelides, Tearing, and Simplification passes
+    simulation.py                 # Core simulation wrapper and compiler (lambdify)
+    backends/                     # Modular backend implementations folder
+        numpy_backend.py          # NumPy/SciPy solver and custom stepper implementation
+        torch_backend.py          # PyTorch GPU-parallel solver and custom stepper implementation
     json_ir.py                    # JSON IR serializer/deserializer using srepr
     requirements.txt              # Standard python pip requirements
     environment.yml               # Conda environment definition
     test/
         test_pantelides.py        # Verification of compiler passes (Pendulum & Mass-Spring-Damper)
-        test_order_reduction.py   # Verification of order reduction logic
         test_system_assembly.py   # Verification of acausal component compilation
         test_simulation.py        # Verification of simulation solvers and GPU batching
 ```

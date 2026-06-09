@@ -46,6 +46,15 @@ def test_simulation_pendulum():
     torn = tearing_pass(red)
     simp = simplification_pass(torn)
     
+    # Write to a JSON file first to avoid recompiling in simulation
+    from json_ir import to_json
+    json_str = to_json(simp)
+    compiled_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "compiled_models")
+    os.makedirs(compiled_dir, exist_ok=True)
+    json_path = os.path.join(compiled_dir, "pendulum_ode_test.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        f.write(json_str)
+        
     # Initial conditions: start at x=1.0, y=0.0 (horizontal position), velocity=0
     # States order: x, x_dot, y, y_dot, lambda
     # Wait, the states list is simp.states. Let's make sure we map y0 correctly!
@@ -63,7 +72,7 @@ def test_simulation_pendulum():
     numpy_methods = ['RK45', 'BDF', 'rk4', 'backward_euler']
     for method in numpy_methods:
         print(f"Simulating Pendulum with NumPy backend ({method})...")
-        sol_num = simulate_system(simp, t_span, y0, params_val, backend='numpy', method=method, rtol=1e-6, atol=1e-6, num_steps=3000)
+        sol_num = simulate_system(json_path, t_span, y0, params_val, backend='numpy', method=method, rtol=1e-6, atol=1e-6, num_steps=3000)
         assert sol_num.success
         
         # Extract results
@@ -84,7 +93,7 @@ def test_simulation_pendulum():
     pytorch_methods = ['rk4', 'backward_euler']
     for method in pytorch_methods:
         print(f"Simulating Pendulum with PyTorch backend ({method})...")
-        sol_torch = simulate_system(simp, t_span, y0, params_val, backend='pytorch', method=method, num_steps=3000)
+        sol_torch = simulate_system(json_path, t_span, y0, params_val, backend='pytorch', method=method, num_steps=3000)
         assert sol_torch.success
         
         x_torch = sol_torch.y[state_to_idx[x]]
@@ -97,7 +106,7 @@ def test_simulation_pendulum():
         
         energy_torch = 0.5 * 1.0 * (x_dot_torch**2 + y_dot_torch**2) - 1.0 * 9.81 * y_torch
         np.testing.assert_allclose(energy_torch, 0.0, atol=1.5e-2)
-        
+            
     print("Pendulum simulation tests passed successfully!")
 
 def test_simulation_mass_spring_damper():
@@ -116,6 +125,15 @@ def test_simulation_mass_spring_damper():
     torn = tearing_pass(red)
     simp = simplification_pass(torn)
     
+    # Write to a JSON file first to avoid recompiling in simulation
+    from json_ir import to_json
+    json_str = to_json(simp)
+    compiled_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "compiled_models")
+    os.makedirs(compiled_dir, exist_ok=True)
+    json_path = os.path.join(compiled_dir, "mass_spring_damper_test_ode.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        f.write(json_str)
+        
     # States: x1_damper, x2_damper, x_ground, x_mass, Derivative(x_mass, t)
     # Let's map states:
     state_to_idx = {s: idx for idx, s in enumerate(simp.states)}
@@ -142,7 +160,7 @@ def test_simulation_mass_spring_damper():
     
     # Simulating NumPy
     print("Simulating Mass-Spring-Damper with NumPy backend...")
-    sol_num = simulate_system(simp, t_span, y0, params_val, backend='numpy', rtol=1e-6, atol=1e-6)
+    sol_num = simulate_system(json_path, t_span, y0, params_val, backend='numpy', rtol=1e-6, atol=1e-6)
     assert sol_num.success
     
     x_mass_vals = sol_num.y[state_to_idx[x_mass]]
@@ -155,15 +173,17 @@ def test_simulation_mass_spring_damper():
     
     # Simulating PyTorch
     print("Simulating Mass-Spring-Damper with PyTorch backend...")
-    sol_torch = simulate_system(simp, t_span, y0, params_val, backend='pytorch', num_steps=3000)
+    sol_torch = simulate_system(json_path, t_span, y0, params_val, backend='pytorch', num_steps=3000)
     assert sol_torch.success
     
     x_mass_torch = sol_torch.y[state_to_idx[x_mass]]
     v_mass_torch = sol_torch.y[state_to_idx[v_mass]]
     
+    # Check that amplitude decays over time (decay behavior)
+    # The initial amplitude is 2.0. By t=10.0, it should be close to 0.
     assert abs(x_mass_torch[-1]) < 0.1
     assert abs(v_mass_torch[-1]) < 0.05
-    
+            
     print("Mass-Spring-Damper simulation tests passed successfully!")
 
 def test_parallel_gpu_simulation():
@@ -201,6 +221,15 @@ def test_parallel_gpu_simulation():
     torn = tearing_pass(red)
     simp = simplification_pass(torn)
     
+    # Write to a JSON file first to avoid recompiling in simulation
+    from json_ir import to_json
+    json_str = to_json(simp)
+    compiled_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "compiled_models")
+    os.makedirs(compiled_dir, exist_ok=True)
+    json_path = os.path.join(compiled_dir, "parallel_pendulum_test_ode.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        f.write(json_str)
+        
     state_to_idx = {s: idx for idx, s in enumerate(simp.states)}
     
     # Let's create a batch of 8 simulation instances.
@@ -230,7 +259,7 @@ def test_parallel_gpu_simulation():
     print(f"Running batch simulation on device: {device}...")
     
     # Run simulation with RK4 method in parallel
-    sol_batch = simulate_system(simp, t_span, y0_batch, params_batch, backend='pytorch', method='rk4', device=device, num_steps=3000)
+    sol_batch = simulate_system(json_path, t_span, y0_batch, params_batch, backend='pytorch', method='rk4', device=device, num_steps=3000)
     assert sol_batch.success
     assert sol_batch.y.shape == (batch_size, len(simp.states), 3001)
     
@@ -249,7 +278,7 @@ def test_parallel_gpu_simulation():
         # Energy: E = 0.5 * m * (x_dot^2 + y_dot^2) - m * g * y
         energy = 0.5 * 1.0 * (x_dot_val**2 + y_dot_val**2) - 1.0 * 9.81 * y_val
         np.testing.assert_allclose(energy, 0.0, atol=1.5e-2)
-        
+            
     print(f"Parallel GPU simulation test on device {device} passed successfully!")
 
 if __name__ == "__main__":
