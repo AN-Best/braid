@@ -1,0 +1,52 @@
+{
+  "Mass": {
+    "name": "Mass",
+    "params": [
+      {"name": "m", "label": "Mass (m)", "default": 1.0, "type": "number"}
+    ],
+    "ports": ["p"],
+    "description": "1D mechanical mass. Accelerates according to Newton's second law."
+  },
+  "Spring": {
+    "name": "Spring",
+    "params": [
+      {"name": "k", "label": "Stiffness (k)", "default": 1.0, "type": "number"}
+    ],
+    "ports": ["p1", "p2"],
+    "description": "1D mechanical spring. Exerts force proportional to displacement."
+  },
+  "Damper": {
+    "name": "Damper",
+    "params": [
+      {"name": "c", "label": "Damping (c)", "default": 0.1, "type": "number"}
+    ],
+    "ports": ["p1", "p2"],
+    "description": "1D mechanical damper. Exerts force proportional to relative velocity."
+  },
+  "Ground": {
+    "name": "Ground",
+    "params": [],
+    "ports": ["p"],
+    "description": "Fixed ground reference. Position is fixed at zero."
+  },
+  "Force": {
+    "name": "Force",
+    "params": [
+      {"name": "F", "label": "Force (F)", "default": 1.0, "type": "number"}
+    ],
+    "ports": ["p"],
+    "description": "External force actuator. Applies a constant external force."
+  },
+  "PositionSensor": {
+    "name": "PositionSensor",
+    "params": [],
+    "ports": ["p"],
+    "description": "Exposes the absolute position of the connected port junction."
+  },
+  "VelocitySensor": {
+    "name": "VelocitySensor",
+    "params": [],
+    "ports": ["p"],
+    "description": "Exposes the absolute velocity of the connected port junction."
+  }
+}

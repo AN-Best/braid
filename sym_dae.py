@@ -15,6 +15,8 @@ class SystemDAE:
         self.param_meta = {}                # Dict mapping parameter symbol srepr to metadata dict
         self.solved_assignments = {}        # Dict mapping solved variable to explicit expression (from tearing)
         self.ode_assignments = {}           # Dict mapping state derivative to simplified explicit expression
+        self.sensor_mappings = {}           # Dict mapping sensor name to reference mappings
+        self.sensor_targets = {}            # Dict mapping sensor name to simplified monitored system expressions
 
     def copy_structure(self):
         new_dae = SystemDAE()
@@ -31,4 +33,6 @@ class SystemDAE:
         new_dae.param_meta = dict(self.param_meta)
         new_dae.solved_assignments = dict(self.solved_assignments)
         new_dae.ode_assignments = dict(self.ode_assignments)
+        new_dae.sensor_mappings = dict(self.sensor_mappings)
+        new_dae.sensor_targets = dict(self.sensor_targets)
         return new_dae

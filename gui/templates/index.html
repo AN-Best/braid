@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-zinc-950 text-zinc-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Braid — Physics System Compiler & Simulator</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vis-Network for Graph Drawing -->
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <!-- Plotly.js for Plotting -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .canvas-bg {
+            background-color: #0c0a09;
+            background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 0);
+            background-size: 24px 24px;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans overflow-hidden">
+
+    <!-- Header -->
+    <header class="flex-shrink-0 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-between p-1.5 shadow-lg shadow-indigo-500/20">
+                <!-- Hexagonal Braid Logo Symbol -->
+                <svg class="text-white w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold font-display tracking-tight bg-gradient-to-r from-zinc-100 to-zinc-400 bg-clip-text text-transparent">braid</h1>
+                <p class="text-xs text-zinc-500 font-medium">Acausal Physical Compiler & Parallel Simulator</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div id="compile-status" class="flex items-center space-x-2 text-xs font-semibold text-zinc-400 border border-zinc-800 rounded-full px-3 py-1 bg-zinc-950/50">
+                <span class="w-2 h-2 rounded-full bg-zinc-600" id="status-dot"></span>
+                <span id="status-text">Uncompiled</span>
+            </div>
+            <button onclick="compileSystem()" class="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm rounded-lg px-4 py-2 shadow-lg shadow-indigo-600/20 active:scale-98 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.7 15.3a1 1 0 011.4 0l3 3a1 1 0 01-1.4 1.4l-3-3a1 1 0 010-1.4zM4 4h16v8H4V4zm4 4h2V6H8v2zm4 0h2V6h-2v2z"/>
+                </svg>
+                <span>Compile System</span>
+            </button>
+            <button onclick="runSimulation()" id="simulate-btn" disabled class="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:pointer-events-none text-white font-medium text-sm rounded-lg px-4 py-2 shadow-lg shadow-emerald-600/20 active:scale-98 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>Run Simulation</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex min-h-0 overflow-hidden">
+        <!-- Palette Sidebar -->
+        <aside class="w-64 flex-shrink-0 border-r border-zinc-800 bg-zinc-900/40 p-4 flex flex-col space-y-4 overflow-y-auto">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-zinc-500 font-display">Component Library</h2>
+            <div class="flex flex-col space-y-2.5" id="components-palette">
+                <!-- Dynamically loaded -->
+            </div>
+            
+            <div class="pt-4 border-t border-zinc-800 flex flex-col space-y-2">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-500 font-display">Canvas Actions</h3>
+                <button onclick="openConnectModal()" class="w-full flex items-center space-x-2 text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/50 rounded-lg p-2.5 text-sm transition">
+                    <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244"/>
+                    </svg>
+                    <span>Connect Components</span>
+                </button>
+                <button onclick="deleteSelected()" class="w-full flex items-center space-x-2 text-rose-300 hover:text-rose-200 bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 rounded-lg p-2.5 text-sm transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    <span>Delete Selected</span>
+                </button>
+                <button onclick="clearCanvas()" class="w-full flex items-center space-x-2 text-zinc-400 hover:text-zinc-200 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded-lg p-2 text-xs transition">
+                    <span>Clear Canvas</span>
+                </button>
+                <div class="border-t border-zinc-800/80 my-2"></div>
+                <button onclick="saveModel()" class="w-full flex items-center space-x-2 text-emerald-300 hover:text-emerald-200 bg-emerald-950/20 hover:bg-emerald-950/40 border border-emerald-900/30 rounded-lg p-2.5 text-sm transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20" />
+                    </svg>
+                    <span>Save Model (.braid)</span>
+                </button>
+                <button onclick="document.getElementById('load-file-input').click()" class="w-full flex items-center space-x-2 text-zinc-300 hover:text-white bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700/50 rounded-lg p-2.5 text-sm transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <span>Load Model (.braid)</span>
+                </button>
+                <input type="file" id="load-file-input" accept=".braid" style="display: none;" onchange="loadModel(event)">
+            </div>
+        </aside>
+
+        <!-- Canvas Area -->
+        <main class="flex-1 flex flex-col min-w-0 bg-zinc-950 relative">
+            <div id="canvas" class="flex-1 canvas-bg relative"></div>
+            
+            <!-- Canvas HUD -->
+            <div class="absolute top-4 left-4 pointer-events-none flex flex-col space-y-1">
+                <div class="bg-zinc-900/95 backdrop-blur px-3 py-1.5 rounded-lg border border-zinc-800 shadow-md text-xs font-semibold text-zinc-300 flex items-center space-x-2">
+                    <svg class="w-3.5 h-3.5 text-indigo-400 animate-pulse" fill="none" stroke="currentColor" stroke-dasharray="3 3" stroke-width="2" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10"/>
+                    </svg>
+                    <span>Interactive Workspace Canvas</span>
+                </div>
+            </div>
+            
+            <!-- Equations Panel (Collapsible bottom panel) -->
+            <section class="h-64 border-t border-zinc-800 bg-zinc-900/60 flex flex-col">
+                <div class="border-b border-zinc-800/80 px-4 bg-zinc-950/40 flex items-center justify-between">
+                    <nav class="flex space-x-1" aria-label="Tabs">
+                        <button onclick="switchTab('tab-eqs')" id="btn-tab-eqs" class="px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-indigo-500 text-indigo-400 focus:outline-none">
+                            Equations Pipeline
+                        </button>
+                        <button onclick="switchTab('tab-plot')" id="btn-tab-plot" class="px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-zinc-400 hover:text-zinc-200 focus:outline-none">
+                            Simulation Plot
+                        </button>
+                    </nav>
+                </div>
+                
+                <div class="flex-1 min-h-0 overflow-y-auto p-4">
+                    <!-- Equations Tab Content -->
+                    <div id="tab-eqs" class="space-y-4 h-full">
+                        <div class="grid grid-cols-4 gap-4 h-full">
+                            <div class="flex flex-col h-full bg-zinc-950/70 rounded-lg border border-zinc-800/50 p-3 overflow-hidden">
+                                <h3 class="text-xs font-bold text-zinc-400 mb-2 font-display uppercase tracking-wider">1. Assembled DAE</h3>
+                                <pre id="eq-assembled" class="flex-1 font-mono text-[11px] text-indigo-300 overflow-auto whitespace-pre bg-zinc-950 p-2 rounded border border-zinc-900">Place components and compile...</pre>
+                            </div>
+                            <div class="flex flex-col h-full bg-zinc-950/70 rounded-lg border border-zinc-800/50 p-3 overflow-hidden">
+                                <h3 class="text-xs font-bold text-zinc-400 mb-2 font-display uppercase tracking-wider">2. Index Reduced</h3>
+                                <pre id="eq-reduced" class="flex-1 font-mono text-[11px] text-emerald-300 overflow-auto whitespace-pre bg-zinc-950 p-2 rounded border border-zinc-900">Compile to reduce index...</pre>
+                            </div>
+                            <div class="flex flex-col h-full bg-zinc-950/70 rounded-lg border border-zinc-800/50 p-3 overflow-hidden">
+                                <h3 class="text-xs font-bold text-zinc-400 mb-2 font-display uppercase tracking-wider">3. Solver Assignments</h3>
+                                <pre id="eq-torn" class="flex-1 font-mono text-[11px] text-amber-300 overflow-auto whitespace-pre bg-zinc-950 p-2 rounded border border-zinc-900">Compile to solve algebraic variables...</pre>
+                            </div>
+                            <div class="flex flex-col h-full bg-zinc-950/70 rounded-lg border border-zinc-800/50 p-3 overflow-hidden">
+                                <h3 class="text-xs font-bold text-zinc-400 mb-2 font-display uppercase tracking-wider">4. Simplified ODE Map</h3>
+                                <pre id="eq-simplified" class="flex-1 font-mono text-[11px] text-purple-300 overflow-auto whitespace-pre bg-zinc-950 p-2 rounded border border-zinc-900">Compile to obtain minimal states...</pre>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Plots Tab Content -->
+                    <div id="tab-plot" class="hidden h-full flex flex-col justify-center items-center">
+                        <div id="plot-container" class="w-full h-full"></div>
+                        <div id="plot-placeholder" class="text-zinc-500 text-sm font-medium">Run a simulation to generate trajectories</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Inspector Sidebar -->
+        <aside class="w-80 flex-shrink-0 border-l border-zinc-800 bg-zinc-900/40 p-5 flex flex-col space-y-6 overflow-y-auto">
+            <!-- Property Inspector -->
+            <section class="flex flex-col space-y-3">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-zinc-500 font-display">Property Inspector</h2>
+                <div id="inspector-content" class="bg-zinc-950/45 p-4 rounded-xl border border-zinc-800/60 text-sm text-zinc-400 flex flex-col items-center justify-center py-8">
+                    <svg class="w-8 h-8 text-zinc-600 mb-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
+                    </svg>
+                    <span class="text-xs text-zinc-500 font-medium">Select a node or connection on the canvas to edit properties</span>
+                </div>
+            </section>
+            
+            <!-- Solver Settings -->
+            <section class="flex flex-col space-y-4 pt-4 border-t border-zinc-800">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-zinc-500 font-display">Simulator Config</h2>
+                
+                <div class="flex flex-col space-y-3.5">
+                    <div>
+                        <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Numerical Backend</label>
+                        <select id="config-backend" onchange="onBackendChange()" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-medium text-zinc-200">
+                            <option value="numpy">NumPy / SciPy</option>
+                            <option value="pytorch">PyTorch (GPU Parallel)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Integration Method</label>
+                        <select id="config-method" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-medium text-zinc-200">
+                            <!-- Populated dynamically based on backend -->
+                        </select>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Start Time (t0)</label>
+                            <input type="number" id="config-t0" value="0.0" step="0.1" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-medium text-zinc-200">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Stop Time (tf)</label>
+                            <input type="number" id="config-tf" value="10.0" step="0.5" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-medium text-zinc-200">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-xs font-semibold text-zinc-400 mb-1.5">Simulation Steps</label>
+                        <input type="number" id="config-steps" value="1000" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-medium text-zinc-200">
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Dynamic Initial Conditions -->
+            <section class="flex flex-col space-y-3 pt-4 border-t border-zinc-800">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-zinc-500 font-display">Initial States</h2>
+                <div id="initial-states-container" class="space-y-3">
+                    <p class="text-xs text-zinc-500 italic">No states compiled. Click "Compile System" to resolve state variables.</p>
+                </div>
+            </section>
+        </aside>
+    </div>
+
+    <!-- Connection Dialog Modal -->
+    <div id="connect-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-zinc-900 border border-zinc-800 rounded-xl w-96 p-6 shadow-2xl flex flex-col space-y-4">
+            <h3 class="text-base font-bold font-display text-zinc-100">Establish Port Junction Connection</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs font-semibold text-zinc-400 mb-1">Source Component</label>
+                    <select id="modal-src-node" onchange="onModalSrcChange()" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none text-zinc-200 font-medium"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-zinc-400 mb-1">Source Port</label>
+                    <select id="modal-src-port" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none text-zinc-200 font-medium"></select>
+                </div>
+                <div class="border-t border-zinc-800/80 my-2"></div>
+                <div>
+                    <label class="block text-xs font-semibold text-zinc-400 mb-1">Target Component</label>
+                    <select id="modal-tgt-node" onchange="onModalTgtChange()" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none text-zinc-200 font-medium"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-zinc-400 mb-1">Target Port</label>
+                    <select id="modal-tgt-port" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none text-zinc-200 font-medium"></select>
+                </div>
+            </div>
+            <div class="flex items-center justify-end space-x-3 pt-2">
+                <button onclick="closeConnectModal()" class="px-4 py-2 rounded-lg text-sm font-semibold text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-750 transition">Cancel</button>
+                <button onclick="createConnection()" class="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition">Create Link</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Javascript Application Logic -->
+    <script>
+        let componentsMetadata = {};
+        let componentParams = {}; // Map of nodeId -> paramsMap
+        let nodeCounters = {};    // Map of type -> counter
+        let activeCompileId = null;
+        let compiledStateNames = [];
+        let compiledComponents = [];
+        let sensorTargets = {};
+
+        // Setup Vis Network datasets
+        const visNodes = new vis.DataSet([]);
+        const visEdges = new vis.DataSet([]);
+        let network = null;
+
+        // Colors mapping to mechanical components
+        const componentColors = {
+            Mass: { border: '#f87171', background: '#991b1b' }, // Light red border, dark red background
+            Spring: { border: '#60a5fa', background: '#1e40af' }, // Blue
+            Damper: { border: '#34d399', background: '#065f46' }, // Green
+            Ground: { border: '#fbbf24', background: '#92400e' }, // Amber
+            Force: { border: '#c084fc', background: '#6b21a8' },  // Purple
+            PositionSensor: { border: '#2dd4bf', background: '#0f766e' }, // Teal
+            VelocitySensor: { border: '#f43f5e', background: '#881337' }  // Rose
+        };
+
+        // Initialize App
+        window.addEventListener('DOMContentLoaded', async () => {
+            await fetchComponentsMetadata();
+            initNetwork();
+            initConfigOptions();
+            
+            // Build a default simple Mass-Spring-Damper layout for the user
+            createDefaultLayout();
+        });
+
+        // Fetch components from server
+        async function fetchComponentsMetadata() {
+            try {
+                const response = await fetch('/api/components');
+                componentsMetadata = await response.json();
+                renderComponentsPalette();
+            } catch (err) {
+                console.error("Failed to load component definitions", err);
+            }
+        }
+
+        // Render components palette in sidebar
+        function renderComponentsPalette() {
+            const container = document.getElementById('components-palette');
+            container.innerHTML = '';
+            
+            Object.values(componentsMetadata).forEach(comp => {
+                const color = componentColors[comp.name] || { border: '#e2e8f0', background: '#1e293b' };
+                const btn = document.createElement('button');
+                btn.className = "w-full text-left bg-zinc-900 hover:bg-zinc-850 hover:border-zinc-700/60 border border-zinc-800 rounded-xl p-3.5 transition flex flex-col space-y-1 relative overflow-hidden group";
+                btn.onclick = () => addComponentToCanvas(comp.name);
+                
+                // Add a visual color bar tag matching type color
+                const colorTag = document.createElement('div');
+                colorTag.className = "absolute left-0 top-0 bottom-0 w-1";
+                colorTag.style.backgroundColor = color.border;
+                btn.appendChild(colorTag);
+
+                btn.innerHTML += `
+                    <div class="flex items-center justify-between pl-1">
+                        <span class="font-bold text-sm text-zinc-200 group-hover:text-white font-display">${comp.name}</span>
+                        <span class="text-[10px] bg-zinc-950 font-semibold px-2 py-0.5 rounded text-zinc-500 font-mono">Ports: ${comp.ports.join(', ')}</span>
+                    </div>
+                    <p class="text-xs text-zinc-400 pl-1 leading-normal font-medium">${comp.description}</p>
+                `;
+                container.appendChild(btn);
+            });
+        }
+
+        // Initialize Vis Network canvas
+        function initNetwork() {
+            const canvasContainer = document.getElementById('canvas');
+            const data = { nodes: visNodes, edges: visEdges };
+            const options = {
+                physics: {
+                    enabled: true,
+                    solver: 'repulsion',
+                    repulsion: {
+                        nodeDistance: 130,
+                        springLength: 90
+                    }
+                },
+                edges: {
+                    width: 2,
+                    color: { color: '#818cf8', highlight: '#c084fc', hover: '#a855f7' },
+                    font: { size: 10, color: '#e2e8f0', background: '#09090b', strokeWidth: 0, face: 'Fira Code' }
+                },
+                nodes: {
+                    shape: 'box',
+                    margin: 12,
+                    borderWidth: 2.5,
+                    font: { color: '#f8fafc', face: 'Inter', size: 13, bold: true },
+                    shadow: { enabled: true, color: 'rgba(0,0,0,0.5)', size: 5 }
+                },
+                interaction: {
+                    hover: true,
+                    selectConnectedEdges: false
+                }
+            };
+            network = new vis.Network(canvasContainer, data, options);
+
+            // Add select node event listener
+            network.on("selectNode", (params) => {
+                showInspectorForNode(params.nodes[0]);
+            });
+            network.on("selectEdge", (params) => {
+                showInspectorForEdge(params.edges[0]);
+            });
+            network.on("deselectNode", () => {
+                clearInspector();
+            });
+            network.on("deselectEdge", () => {
+                clearInspector();
+            });
+        }
+
+        // Configure integration methods based on backend
+        const methodsByBackend = {
+            numpy: [
+                { value: 'RK45', label: 'RK45 (Adaptive)' },
+                { value: 'BDF', label: 'BDF (Adaptive Stiff)' },
+                { value: 'LSODA', label: 'LSODA (Adaptive)' },
+                { value: 'Radau', label: 'Radau (Stiff)' },
+                { value: 'rk4', label: 'RK4 (Fixed Step)' },
+                { value: 'backward_euler', label: 'Implicit Backward Euler (Fixed)' },
+                { value: 'euler', label: 'Forward Euler (Fixed)' }
+            ],
+            pytorch: [
+                { value: 'rk4', label: 'RK4 (Fixed Step)' },
+                { value: 'backward_euler', label: 'Newton Backward Euler (Fixed)' },
+                { value: 'euler', label: 'Forward Euler (Fixed)' }
+            ]
+        };
+
+        function initConfigOptions() {
+            onBackendChange();
+        }
+
+        function onBackendChange() {
+            const backend = document.getElementById('config-backend').value;
+            const methodSelect = document.getElementById('config-method');
+            methodSelect.innerHTML = '';
+            
+            methodsByBackend[backend].forEach(method => {
+                const opt = document.createElement('option');
+                opt.value = method.value;
+                opt.textContent = method.label;
+                methodSelect.appendChild(opt);
+            });
+        }        // Create Default Mass-Spring-Damper Layout
+        function createDefaultLayout() {
+            clearCanvas();
+            
+            // Add components
+            const ground = addComponentToCanvas('Ground', 50, 0);
+            const spring = addComponentToCanvas('Spring', 180, -45);
+            const damper = addComponentToCanvas('Damper', 180, 45);
+            const mass = addComponentToCanvas('Mass', 300, 0);
+            const force = addComponentToCanvas('Force', 420, 0);
+            const sensor = addComponentToCanvas('PositionSensor', 300, 100);
+            
+            // Set spring value default to k=10.0, mass default to m=2.0, damper to c=1.0
+            componentParams[spring.id].k = 10.0;
+            componentParams[damper.id].c = 1.0;
+            componentParams[mass.id].m = 2.0;
+            componentParams[force.id].F = 10.0; // Apply external step force
+
+            // Add connections
+            visEdges.add([
+                { id: 'edge_1', from: ground.id, to: spring.id, sourcePort: 'p', targetPort: 'p1', label: 'p ↔ p1' },
+                { id: 'edge_2', from: ground.id, to: damper.id, sourcePort: 'p', targetPort: 'p1', label: 'p ↔ p1' },
+                { id: 'edge_3', from: spring.id, to: mass.id, sourcePort: 'p2', targetPort: 'p', label: 'p2 ↔ p' },
+                { id: 'edge_4', from: damper.id, to: mass.id, sourcePort: 'p2', targetPort: 'p', label: 'p2 ↔ p' },
+                { id: 'edge_5', from: mass.id, to: force.id, sourcePort: 'p', targetPort: 'p', label: 'p ↔ p' },
+                { id: 'edge_6', from: mass.id, to: sensor.id, sourcePort: 'p', targetPort: 'p', label: 'p ↔ p' }
+            ]);
+        }
+
+        // Add Braid Component to Canvas
+        function addComponentToCanvas(type, x = undefined, y = undefined) {
+            if (!nodeCounters[type]) {
+                nodeCounters[type] = 1;
+            }
+            const count = nodeCounters[type]++;
+            const id = `${type.toLowerCase()}_${count}`;
+            const meta = componentsMetadata[type];
+            
+            // Register default params
+            const params = {};
+            meta.params.forEach(p => {
+                params[p.name] = p.default;
+            });
+            componentParams[id] = params;
+
+            const color = componentColors[type] || { border: '#e2e8f0', background: '#1e293b' };
+            const nodeData = {
+                id: id,
+                label: id,
+                type: type,
+                color: {
+                    border: color.border,
+                    background: color.background,
+                    highlight: { border: '#a855f7', background: '#4c1d95' },
+                    hover: { border: '#c084fc', background: '#581c87' }
+                }
+            };
+            if (x !== undefined && y !== undefined) {
+                nodeData.x = x;
+                nodeData.y = y;
+            }
+            visNodes.add(nodeData);
+            return nodeData;
+        }
+
+        // Show properties in inspector sidebar for component nodes
+        function showInspectorForNode(nodeId) {
+            const node = visNodes.get(nodeId);
+            const container = document.getElementById('inspector-content');
+            const meta = componentsMetadata[node.type];
+            const params = componentParams[nodeId];
+
+            let html = `
+                <div class="w-full flex flex-col space-y-4">
+                    <div class="flex flex-col space-y-1">
+                        <span class="text-xs uppercase font-bold tracking-wider text-indigo-400 font-display">${node.type} Block</span>
+                        <h3 class="text-base font-bold text-zinc-100 font-mono">${nodeId}</h3>
+                    </div>
+                    <div class="border-t border-zinc-800 pt-3 flex flex-col space-y-3">
+            `;
+
+            if (meta.params.length === 0) {
+                html += `<p class="text-xs text-zinc-500 italic">No adjustable parameters for this component.</p>`;
+            } else {
+                meta.params.forEach(p => {
+                    const currentVal = params[p.name];
+                    html += `
+                        <div>
+                            <label class="block text-xs font-semibold text-zinc-400 mb-1.5">${p.label}</label>
+                            <input type="number" step="any" value="${currentVal}" 
+                                   onchange="updateNodeParam('${nodeId}', '${p.name}', this.value)" 
+                                   class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 font-medium text-zinc-200">
+                        </div>
+                    `;
+                });
+            }
+
+            html += `
+                    </div>
+                    <div class="border-t border-zinc-800 pt-3 flex flex-col space-y-1">
+                        <span class="text-xs font-bold text-zinc-500">Available Ports</span>
+                        <div class="flex flex-wrap gap-1.5 pt-1">
+                            ${meta.ports.map(p => `<span class="text-[10px] bg-zinc-900 border border-zinc-800 rounded font-semibold px-2 py-0.5 font-mono text-zinc-400">${p}</span>`).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.innerHTML = html;
+        }
+
+        // Show properties in inspector sidebar for wires/edges
+        function showInspectorForEdge(edgeId) {
+            const edge = visEdges.get(edgeId);
+            const container = document.getElementById('inspector-content');
+            
+            container.innerHTML = `
+                <div class="w-full flex flex-col space-y-4">
+                    <div class="flex flex-col space-y-1">
+                        <span class="text-xs uppercase font-bold tracking-wider text-indigo-400 font-display">Port Connection</span>
+                        <h3 class="text-base font-bold text-zinc-100 font-mono">Link</h3>
+                    </div>
+                    <div class="border-t border-zinc-800 pt-3 space-y-2 text-xs">
+                        <div class="flex items-center justify-between">
+                            <span class="text-zinc-500 font-medium">Source:</span>
+                            <span class="font-mono text-zinc-300 font-semibold">${edge.from} (${edge.sourcePort})</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-zinc-500 font-medium">Target:</span>
+                            <span class="font-mono text-zinc-300 font-semibold">${edge.to} (${edge.targetPort})</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateNodeParam(nodeId, paramName, value) {
+            if (componentParams[nodeId]) {
+                componentParams[nodeId][paramName] = parseFloat(value);
+            }
+        }
+
+        function clearInspector() {
+            document.getElementById('inspector-content').innerHTML = `
+                <svg class="w-8 h-8 text-zinc-600 mb-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
+                </svg>
+                <span class="text-xs text-zinc-500 font-medium">Select a node or connection on the canvas to edit properties</span>
+            `;
+        }
+
+        // Connect Modal Handling
+        function openConnectModal() {
+            const allNodes = visNodes.get();
+            if (allNodes.length < 2) {
+                alert("You need at least two components on the canvas to make a connection.");
+                return;
+            }
+            
+            const srcSelect = document.getElementById('modal-src-node');
+            const tgtSelect = document.getElementById('modal-tgt-node');
+            
+            srcSelect.innerHTML = '';
+            tgtSelect.innerHTML = '';
+            
+            allNodes.forEach(node => {
+                const opt1 = document.createElement('option');
+                opt1.value = node.id;
+                opt1.textContent = node.id;
+                srcSelect.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = node.id;
+                opt2.textContent = node.id;
+                tgtSelect.appendChild(opt2);
+            });
+
+            // Set different initial values
+            if (allNodes.length > 1) {
+                tgtSelect.value = allNodes[1].id;
+            }
+
+            onModalSrcChange();
+            onModalTgtChange();
+
+            document.getElementById('connect-modal').classList.remove('hidden');
+        }
+
+        function closeConnectModal() {
+            document.getElementById('connect-modal').classList.add('hidden');
+        }
+
+        function onModalSrcChange() {
+            const nodeId = document.getElementById('modal-src-node').value;
+            const node = visNodes.get(nodeId);
+            const portSelect = document.getElementById('modal-src-port');
+            portSelect.innerHTML = '';
+            
+            componentsMetadata[node.type].ports.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                portSelect.appendChild(opt);
+            });
+        }
+
+        function onModalTgtChange() {
+            const nodeId = document.getElementById('modal-tgt-node').value;
+            const node = visNodes.get(nodeId);
+            const portSelect = document.getElementById('modal-tgt-port');
+            portSelect.innerHTML = '';
+            
+            componentsMetadata[node.type].ports.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.textContent = p;
+                portSelect.appendChild(opt);
+            });
+        }
+
+        function createConnection() {
+            const src = document.getElementById('modal-src-node').value;
+            const srcPort = document.getElementById('modal-src-port').value;
+            const tgt = document.getElementById('modal-tgt-node').value;
+            const tgtPort = document.getElementById('modal-tgt-port').value;
+
+            if (src === tgt) {
+                alert("Cannot connect a component to itself.");
+                return;
+            }
+
+            // Check if connection already exists
+            const existing = visEdges.get({
+                filter: function (item) {
+                    return (item.from === src && item.to === tgt && item.sourcePort === srcPort && item.targetPort === tgtPort) ||
+                           (item.from === tgt && item.to === src && item.sourcePort === tgtPort && item.targetPort === srcPort);
+                }
+            });
+
+            if (existing.length > 0) {
+                alert("A connection between these ports already exists.");
+                return;
+            }
+
+            const edgeId = `edge_${src}_${srcPort}_${tgt}_${tgtPort}`;
+            visEdges.add({
+                id: edgeId,
+                from: src,
+                to: tgt,
+                sourcePort: srcPort,
+                targetPort: tgtPort,
+                label: `${srcPort} ↔ ${tgtPort}`
+            });
+
+            closeConnectModal();
+            resetCompileStatus();
+        }
+
+        // Delete Selected Node or Edge
+        function deleteSelected() {
+            const selectedNodes = network.getSelectedNodes();
+            const selectedEdges = network.getSelectedEdges();
+
+            selectedNodes.forEach(nodeId => {
+                visNodes.remove(nodeId);
+                // Clean up references
+                delete componentParams[nodeId];
+                
+                // Remove any connected edges manually to prevent orphans
+                const connectedEdges = visEdges.get({
+                    filter: (item) => item.from === nodeId || item.to === nodeId
+                });
+                connectedEdges.forEach(e => visEdges.remove(e.id));
+            });
+
+            selectedEdges.forEach(edgeId => {
+                visEdges.remove(edgeId);
+            });
+
+            clearInspector();
+            resetCompileStatus();
+        }
+
+        function clearCanvas() {
+            visNodes.clear();
+            visEdges.clear();
+            componentParams = {};
+            nodeCounters = {};
+            clearInspector();
+            resetCompileStatus();
+        }
+
+        function resetCompileStatus() {
+            activeCompileId = null;
+            compiledStateNames = [];
+            sensorTargets = {};
+            document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-zinc-600";
+            document.getElementById('status-text').textContent = "Uncompiled";
+            document.getElementById('simulate-btn').disabled = true;
+            
+            // Clear equation containers
+            document.getElementById('eq-assembled').textContent = 'Place components and compile...';
+            document.getElementById('eq-reduced').textContent = 'Compile to reduce index...';
+            document.getElementById('eq-torn').textContent = 'Compile to solve algebraic variables...';
+            document.getElementById('eq-simplified').textContent = 'Compile to obtain minimal states...';
+            
+            // Clear initial states list
+            document.getElementById('initial-states-container').innerHTML = `
+                <p class="text-xs text-zinc-500 italic">No states compiled. Click "Compile System" to resolve state variables.</p>
+            `;
+
+            // Reset plot state to placeholder
+            document.getElementById('plot-placeholder').className = "text-zinc-500 text-sm font-medium";
+            document.getElementById('plot-container').className = "hidden";
+            document.getElementById('plot-container').innerHTML = "";
+        }
+
+        // API compilation call
+        async function compileSystem() {
+            const allNodes = visNodes.get();
+            const allEdges = visEdges.get();
+
+            if (allNodes.length === 0) {
+                alert("Canvas is empty. Add components first before compiling.");
+                return;
+            }
+
+            // Map frontend nodes to compiler API schema
+            const nodesPayload = allNodes.map(n => ({
+                id: n.id,
+                type: n.type,
+                params: componentParams[n.id]
+            }));
+
+            const edgesPayload = allEdges.map(e => ({
+                source: e.from,
+                sourcePort: e.sourcePort,
+                target: e.to,
+                targetPort: e.targetPort
+            }));
+
+            // Set UI to compiling
+            document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-amber-500 animate-pulse";
+            document.getElementById('status-text').textContent = "Compiling...";
+
+            try {
+                const response = await fetch('/api/compile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nodes: nodesPayload, edges: edgesPayload })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || "Server compilation error");
+                }
+
+                const data = await response.json();
+                
+                // Store compile id & state mappings
+                activeCompileId = data.compile_id;
+                compiledStateNames = data.states;
+                compiledComponents = data.components || [];
+                sensorTargets = data.sensor_targets || {};
+
+                // Update HUD
+                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-emerald-500";
+                document.getElementById('status-text').textContent = "Compiled Successfully";
+                document.getElementById('simulate-btn').disabled = false;
+
+                // Update equations tabs
+                document.getElementById('eq-assembled').textContent = data.initial_eqs.join('\n');
+                document.getElementById('eq-reduced').textContent = data.reduced_eqs.join('\n');
+                document.getElementById('eq-torn').textContent = data.torn_eqs.join('\n');
+                
+                // Build dynamic readable mappings for ODE assignments
+                let odeStr = '';
+                for (const [k, v] of Object.entries(data.ode_assignments)) {
+                    odeStr += `${k} = ${v}\n`;
+                }
+                document.getElementById('eq-simplified').textContent = odeStr;
+
+                // Populate dynamic initial states inputs
+                renderInitialStatesFields(data.states);
+
+                // Auto switch to equations tab
+                switchTab('tab-eqs');
+
+            } catch (err) {
+                document.getElementById('status-dot').className = "w-2 h-2 rounded-full bg-rose-500";
+                document.getElementById('status-text').textContent = "Compile Failed";
+                document.getElementById('simulate-btn').disabled = true;
+                
+                // Display the detailed compilation error in the equations tab
+                document.getElementById('eq-assembled').innerHTML = `<span class="text-rose-400 font-bold">Compilation Error:</span>\n${err.message}`;
+                document.getElementById('eq-reduced').textContent = 'Compilation failed...';
+                document.getElementById('eq-torn').textContent = 'Compilation failed...';
+                document.getElementById('eq-simplified').textContent = 'Compilation failed...';
+                
+                switchTab('tab-eqs');
+                alert("Compilation Failed: " + err.message);
+            }
+        }
+
+        // Dynamically build input fields for state initial conditions
+        function renderInitialStatesFields(states) {
+            const container = document.getElementById('initial-states-container');
+            container.innerHTML = '';
+            
+            if (states.length === 0) {
+                container.innerHTML = `<p class="text-xs text-zinc-500 italic">No dynamic state variables in this system.</p>`;
+                return;
+            }
+
+            states.forEach(stateStr => {
+                let defaultVal = 0.0;
+
+                const div = document.createElement('div');
+                div.className = "flex flex-col space-y-1 bg-zinc-950 p-2 border border-zinc-800 rounded-lg";
+                div.innerHTML = `
+                    <label class="font-mono text-[10px] font-semibold text-zinc-400 truncate" title="${stateStr}">${stateStr}</label>
+                    <input type="number" step="any" value="${defaultVal}" data-state="${stateStr}" 
+                           class="w-full bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1 text-xs focus:outline-none focus:border-indigo-500 text-zinc-200">
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // Run Numerical Solver
+        async function runSimulation() {
+            if (!activeCompileId) {
+                alert("Please compile the system layout first.");
+                return;
+            }
+
+            const backend = document.getElementById('config-backend').value;
+            const method = document.getElementById('config-method').value;
+            const t0 = parseFloat(document.getElementById('config-t0').value);
+            const tf = parseFloat(document.getElementById('config-tf').value);
+            const steps = parseInt(document.getElementById('config-steps').value);
+
+            // Fetch state values
+            const y0Payload = {};
+            const stateInputs = document.querySelectorAll('#initial-states-container input');
+            stateInputs.forEach(input => {
+                const state = input.getAttribute('data-state');
+                y0Payload[state] = parseFloat(input.value || 0.0);
+            });
+
+            // Build component parameter dict overrides
+            const paramsPayload = {};
+            for (const [nodeId, params] of Object.entries(componentParams)) {
+                for (const [pName, val] of Object.entries(params)) {
+                    paramsPayload[`${nodeId}.${pName}`] = val;
+                }
+            }
+
+            const simulateBtn = document.getElementById('simulate-btn');
+            simulateBtn.textContent = 'Simulating...';
+            simulateBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/simulate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        compile_id: activeCompileId,
+                        t_span: [t0, tf],
+                        y0: y0Payload,
+                        params: paramsPayload,
+                        backend: backend,
+                        method: method,
+                        num_steps: steps
+                    })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.detail || "Simulation failed");
+                }
+
+                const data = await response.json();
+                
+                // Switch tab first so Plotly can calculate size correctly
+                switchTab('tab-plot');
+                renderPlot(data);
+
+            } catch (err) {
+                alert("Simulation Failed: " + err.message);
+            } finally {
+                simulateBtn.innerHTML = `
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>Run Simulation</span>
+                `;
+                simulateBtn.disabled = false;
+            }
+        }
+
+        // Render Plotly line chart
+        function renderPlot(data) {
+            document.getElementById('plot-placeholder').className = "hidden";
+            document.getElementById('plot-container').className = "w-full h-full";
+
+            const t = data.t;
+            const traces = [];
+            
+            // Choose nice neon/saturated line colors for dark mode
+            const traceColors = ['#60a5fa', '#34d399', '#f87171', '#c084fc', '#fbbf24', '#2dd4bf', '#fb7185'];
+            let colorIdx = 0;
+
+            // Filter states if sensors are present in compiledComponents
+            const sensorComponents = compiledComponents.filter(c => 
+                c.type.toLowerCase().includes('sensor')
+            );
+            const hasSensors = sensorComponents.length > 0;
+
+            for (const [stateName, yValues] of Object.entries(data.states)) {
+                let displayName = stateName;
+                let shouldPlot = true;
+
+                if (hasSensors) {
+                    const monitoringSensors = [];
+                    for (const [sensorName, targetExpr] of Object.entries(sensorTargets)) {
+                        const normTarget = targetExpr.replace(/\s+/g, '');
+                        const normState = stateName.replace(/\s+/g, '');
+                        if (normTarget === normState) {
+                            monitoringSensors.push(sensorName);
+                        }
+                    }
+                    if (monitoringSensors.length > 0) {
+                        displayName = `${monitoringSensors.join(', ')} (${stateName})`;
+                    } else {
+                        shouldPlot = false;
+                    }
+                }
+
+                if (!shouldPlot) {
+                    continue;
+                }
+
+                traces.push({
+                    x: t,
+                    y: yValues,
+                    mode: 'lines',
+                    name: displayName,
+                    line: {
+                        color: traceColors[colorIdx % traceColors.length],
+                        width: 2.5
+                    }
+                });
+                colorIdx++;
+            }
+
+            const layout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: {
+                    family: 'Inter, sans-serif',
+                    color: '#a1a1aa'
+                },
+                margin: { l: 50, r: 20, t: 30, b: 40 },
+                xaxis: {
+                    title: 'Time (seconds)',
+                    gridcolor: '#18181b',
+                    linecolor: '#27272a',
+                    zerolinecolor: '#27272a'
+                },
+                yaxis: {
+                    title: 'State Values',
+                    gridcolor: '#18181b',
+                    linecolor: '#27272a',
+                    zerolinecolor: '#27272a'
+                },
+                legend: {
+                    font: { size: 10 },
+                    bgcolor: 'rgba(9,9,11,0.8)',
+                    bordercolor: '#27272a',
+                    borderwidth: 1
+                },
+                hovermode: 'x unified'
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                displaylogo: false
+            };
+
+            Plotly.newPlot('plot-container', traces, layout, config);
+        }
+
+        // Save Model to .braid file
+        function saveModel() {
+            const allNodes = visNodes.get();
+            const allEdges = visEdges.get();
+
+            if (allNodes.length === 0) {
+                alert("Cannot save an empty layout.");
+                return;
+            }
+
+            const payload = {
+                nodes: allNodes.map(n => ({
+                    id: n.id,
+                    type: n.type,
+                    params: componentParams[n.id]
+                })),
+                edges: allEdges.map(e => ({
+                    source: e.from,
+                    sourcePort: e.sourcePort,
+                    target: e.to,
+                    targetPort: e.targetPort
+                }))
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "model.braid");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        // Load Model from .braid file
+        function loadModel(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.nodes || !data.edges) {
+                        throw new Error("Invalid model file format.");
+                    }
+
+                    clearCanvas();
+
+                    // Reconstruct nodes
+                    data.nodes.forEach(n => {
+                        const meta = componentsMetadata[n.type];
+                        if (!meta) return;
+
+                        // Register parameters
+                        componentParams[n.id] = n.params;
+
+                        // Update node type counters
+                        const idx = n.id.lastIndexOf('_');
+                        if (idx !== -1) {
+                            const count = parseInt(n.id.substring(idx + 1));
+                            if (!isNaN(count)) {
+                                nodeCounters[n.type] = Math.max(nodeCounters[n.type] || 0, count + 1);
+                            }
+                        }
+
+                        const color = componentColors[n.type] || { border: '#e2e8f0', background: '#1e293b' };
+                        visNodes.add({
+                            id: n.id,
+                            label: n.id,
+                            type: n.type,
+                            color: {
+                                border: color.border,
+                                background: color.background,
+                                highlight: { border: '#a855f7', background: '#4c1d95' },
+                                hover: { border: '#c084fc', background: '#581c87' }
+                            }
+                        });
+                    });
+
+                    // Reconstruct edges
+                    data.edges.forEach((e, index) => {
+                        const edgeId = `edge_${e.source}_${e.sourcePort}_${e.target}_${e.targetPort}`;
+                        visEdges.add({
+                            id: edgeId,
+                            from: e.source,
+                            to: e.target,
+                            sourcePort: e.sourcePort,
+                            targetPort: e.targetPort,
+                            label: `${e.sourcePort} ↔ ${e.targetPort}`
+                        });
+                    });
+
+                    // Stabilize layout
+                    if (network) {
+                        network.stabilize();
+                    }
+
+                    alert("Model loaded successfully!");
+                } catch (err) {
+                    alert("Error loading model: " + err.message);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
+        }
+
+        // Tab Switcher
+        function switchTab(tabId) {
+            document.getElementById('tab-eqs').classList.add('hidden');
+            document.getElementById('tab-plot').classList.add('hidden');
+            
+            document.getElementById('btn-tab-eqs').className = "px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-zinc-400 hover:text-zinc-200 focus:outline-none";
+            document.getElementById('btn-tab-plot').className = "px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-transparent text-zinc-400 hover:text-zinc-200 focus:outline-none";
+
+            document.getElementById(tabId).classList.remove('hidden');
+            
+            if (tabId === 'tab-eqs') {
+                document.getElementById('btn-tab-eqs').className = "px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-indigo-500 text-indigo-400 focus:outline-none";
+            } else if (tabId === 'tab-plot') {
+                document.getElementById('btn-tab-plot').className = "px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 border-indigo-500 text-indigo-400 focus:outline-none";
+                // Force Plotly resize on tab switch unconditionally
+                const plotContainer = document.getElementById('plot-container');
+                if (plotContainer) {
+                    Plotly.Plots.resize(plotContainer);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

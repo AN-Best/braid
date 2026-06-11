@@ -305,6 +305,25 @@ def simplification_pass(dae: SystemDAE) -> SystemDAE:
         # Simplify the expression
         simplified[var] = sp.simplify(new_expr)
 
+    # 3b. Resolve sensor targets directly to existing system variables/states
+    new_dae.sensor_targets = {}
+    if hasattr(dae, 'sensor_mappings'):
+        for sensor_name, mapping in dae.sensor_mappings.items():
+            if mapping['type'] == 'PositionSensor':
+                sensor_val = mapping['x_ref']
+            elif mapping['type'] == 'VelocitySensor':
+                sensor_val = mapping['v_ref']
+            else:
+                continue
+            
+            sensor_val_subbed = sensor_val.subs(sub_dict)
+            prev = None
+            curr = sensor_val_subbed
+            while prev != curr:
+                prev = curr
+                curr = curr.subs(simplified)
+            new_dae.sensor_targets[sensor_name] = sp.simplify(curr)
+
     new_dae.solved_assignments = simplified
 
     # 4. Update states: eliminate redundant states (those of the form Derivative(A, t) that are mapped to another state)
@@ -339,5 +358,14 @@ def simplification_pass(dae: SystemDAE) -> SystemDAE:
                 if state_deriv in new_states:
                     ode_assignments[state_deriv] = state_deriv
 
+    # Substitute solved assignments to resolve all algebraic variables in ode_assignments
+    for state_deriv, expr in list(ode_assignments.items()):
+        prev = None
+        curr = expr
+        while prev != curr:
+            prev = curr
+            curr = curr.subs(simplified)
+        ode_assignments[state_deriv] = curr
+
     new_dae.ode_assignments = ode_assignments
-    return new_dae
+    return new_dae

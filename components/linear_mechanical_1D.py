@@ -85,3 +85,25 @@ class Force(Component):
         self.equations = [f_sym - F_sym]
 
         self.ports = {'p': [f_sym, x_sym, sp.Derivative(x_sym, t)]}
+
+
+class PositionSensor(Component):
+    def __init__(self, name):
+        super().__init__(name)
+
+        f_sym = sp.Function(f'f_{self.name}')(t)
+        x_sym = sp.Function(f'x_{self.name}')(t)
+
+        self.ports = {'p': [f_sym, x_sym, sp.Derivative(x_sym, t)]}
+
+
+class VelocitySensor(Component):
+    def __init__(self, name):
+        super().__init__(name)
+
+        f_sym = sp.Function(f'f_{self.name}')(t)
+        x_sym = sp.Function(f'x_{self.name}')(t)
+
+        self.ports = {'p': [f_sym, x_sym, sp.Derivative(x_sym, t)]}
+
+

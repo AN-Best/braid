@@ -12,11 +12,25 @@ class Component(object):
         self._param_meta[param_name] = {'sym': sym, 'default': default}
 
 def Node(system, comp_set):
-    eq = comp_set[0][0].ports[comp_set[0][1]][0]
-    x_ref = comp_set[0][0].ports[comp_set[0][1]][1]
-    v_ref = comp_set[0][0].ports[comp_set[0][1]][2]
+    import sympy as sp
+    # Separate sensor components and regular components
+    sensors = []
+    regular = []
+    for comp, port in comp_set:
+        if comp.__class__.__name__ in ('PositionSensor', 'VelocitySensor'):
+            sensors.append((comp, port))
+        else:
+            regular.append((comp, port))
+            
+    if not regular:
+        return
 
-    for comp, port in comp_set[1:]:
+    # Connect regular components
+    eq = regular[0][0].ports[regular[0][1]][0]
+    x_ref = regular[0][0].ports[regular[0][1]][1]
+    v_ref = regular[0][0].ports[regular[0][1]][2]
+
+    for comp, port in regular[1:]:
         pi = comp.ports[port][0]
         x_i = comp.ports[port][1]
         v_i = comp.ports[port][2]
@@ -26,15 +40,35 @@ def Node(system, comp_set):
     
     node_eq = eq
     system.equations.append(node_eq)
+
+    # Populate sensor mappings
+    if not hasattr(system, 'sensor_mappings'):
+        system.sensor_mappings = {}
+        
+    for sensor, port in sensors:
+        system.sensor_mappings[sensor.name] = {
+            'type': sensor.__class__.__name__,
+            'x_ref': x_ref,
+            'v_ref': v_ref
+        }
     
 class System(object):
     def __init__(self, components):
-        self.components = components
-        self.elsd = dict([(e.name, e) for e in components])
+        self.sensors = []
+        regular_components = []
+        for c in components:
+            if c.__class__.__name__ in ('PositionSensor', 'VelocitySensor'):
+                self.sensors.append(c)
+            else:
+                regular_components.append(c)
+                
+        self.components = regular_components
+        self.elsd = dict([(e.name, e) for e in regular_components])
         
         self.states = []
         self.params = []
         self.equations = []
+        self.sensor_mappings = {}
 
         for e in self.components:
             self.states += e.states
@@ -79,6 +113,7 @@ class System(object):
         dae.states = self.states.copy()
         dae.params = self.params.copy()
         dae.equations = self.equations.copy()
+        dae.sensor_mappings = self.sensor_mappings.copy()
         
         # Keep track of component metadata (for domains, parameters, etc.)
         dae.components = [
@@ -86,7 +121,7 @@ class System(object):
                 'name': comp.name,
                 'domain': getattr(comp, 'domain', 'continuous')
             }
-            for comp in self.components
+            for comp in self.components + self.sensors
         ]
         
         # Populate parameter metadata mapping the string representation of each parameter to its metadata
