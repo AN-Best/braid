@@ -4,3 +4,12 @@ sympy>=1.8
 networkx>=2.5
 torch>=2.0
 pytest>=7.0
+
+# GUI server
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.0
+
+# Julia bridge (DifferentialEquations.jl backend)
+juliacall>=0.9.15
+juliapkg>=0.1.10

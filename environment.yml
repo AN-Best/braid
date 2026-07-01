@@ -4,10 +4,19 @@ channels:
   - pytorch
   - defaults
 dependencies:
-  - python>=3.8
+  - python>=3.10
   - numpy>=1.20
   - scipy>=1.7
   - sympy>=1.8
   - networkx>=2.5
   - pytest>=7.0
   - pytorch>=2.0
+  # GUI server
+  - fastapi>=0.110
+  - uvicorn>=0.29
+  - pydantic>=2.0
+  - pip:
+    # Julia bridge (DifferentialEquations.jl backend)
+    # juliapkg downloads & manages a Julia installation automatically
+    - juliacall>=0.9.15
+    - juliapkg>=0.1.10
