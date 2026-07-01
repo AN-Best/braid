@@ -1,6 +1,7 @@
 import sys
 import os
 import uuid
+import asyncio
 from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
@@ -17,6 +18,19 @@ import inspect
 from base import System, Node, Component
 from index_reduction import pantelides_pass, tearing_pass, simplification_pass
 from simulation import simulate_system
+from json_ir import to_json as dae_to_json
+
+# --- Julia subprocess worker state ---
+# juliacall holds the GIL during execution, so we run Julia in a child process
+# instead of a thread to avoid deadlocking the uvicorn event loop.
+#
+# States: 'idle' | 'initializing' | 'ready' | 'error'
+JULIA_STATUS = "idle"
+JULIA_INIT_ERROR_MSG: Optional[str] = None
+_julia_proc: Optional[asyncio.subprocess.Process] = None
+_julia_lock = asyncio.Lock()  # Serializes access to the worker subprocess
+_WORKER_SCRIPT = os.path.join(os.path.dirname(__file__), "julia_worker.py")
+
 
 app = FastAPI(title="Braid GUI API Server")
 
@@ -132,7 +146,79 @@ def build_connected_groups(nodes: List[NodeSchema], edges: List[EdgeSchema]) -> 
             
     return groups
 
+# --- Julia subprocess management ---
+
+async def _start_julia_worker():
+    """Launch the Julia worker subprocess and wait for its ready handshake.
+    Must be called while holding _julia_lock."""
+    global JULIA_STATUS, JULIA_INIT_ERROR_MSG, _julia_proc
+
+    if JULIA_STATUS in ("ready", "initializing"):
+        return
+
+    JULIA_STATUS = "initializing"
+    print("Starting Julia worker subprocess...")
+
+    python_exe = sys.executable
+    _julia_proc = await asyncio.create_subprocess_exec(
+        python_exe, _WORKER_SCRIPT,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    # Read the ready handshake line (Julia init can take minutes)
+    try:
+        raw = await _julia_proc.stdout.readline()
+        msg = json.loads(raw.decode().strip())
+    except Exception as exc:
+        JULIA_STATUS = "error"
+        JULIA_INIT_ERROR_MSG = f"Failed to read worker handshake: {exc}"
+        print(JULIA_INIT_ERROR_MSG)
+        return
+
+    if msg.get("ready"):
+        JULIA_STATUS = "ready"
+        print("Julia worker is ready.")
+    else:
+        JULIA_STATUS = "error"
+        JULIA_INIT_ERROR_MSG = msg.get("error", "Unknown worker startup error")
+        print(f"Julia worker failed: {JULIA_INIT_ERROR_MSG}")
+
+async def trigger_julia_init():
+    """Triggers Julia worker startup if not yet started (non-blocking after first call)."""
+    global JULIA_STATUS
+    if JULIA_STATUS == "idle":
+        # Fire-and-forget: start worker in background without holding the lock
+        asyncio.create_task(_start_julia_worker_bg())
+
+async def _start_julia_worker_bg():
+    """Background task wrapper that acquires the lock before starting the worker."""
+    async with _julia_lock:
+        await _start_julia_worker()
+
+async def _send_julia_request(payload: dict) -> dict:
+    """Send a JSON request to the Julia worker and return the parsed JSON response."""
+    global _julia_proc
+    if _julia_proc is None or _julia_proc.returncode is not None:
+        raise RuntimeError("Julia worker process is not running.")
+    line = json.dumps(payload) + "\n"
+    _julia_proc.stdin.write(line.encode())
+    await _julia_proc.stdin.drain()
+    raw = await _julia_proc.stdout.readline()
+    if not raw:
+        stderr_out = await _julia_proc.stderr.read()
+        raise RuntimeError(
+            f"Julia worker closed unexpectedly. stderr: {stderr_out.decode()[:500]}"
+        )
+    return json.loads(raw.decode().strip())
+
 # --- Routes ---
+
+@app.on_event("startup")
+async def on_startup():
+    """Eagerly start the Julia worker in the background so it's warm when first needed."""
+    asyncio.create_task(_start_julia_worker_bg())
 
 @app.get("/")
 def get_gui():
@@ -146,6 +232,23 @@ def get_gui():
 def get_components_metadata():
     """Returns available component classes, their inputs, and descriptors."""
     return COMPONENTS
+
+@app.get("/api/julia/status")
+def get_julia_status():
+    """Returns the current Julia initialization status so the frontend can poll readiness."""
+    return {
+        "status": JULIA_STATUS,
+        "error": JULIA_INIT_ERROR_MSG,
+        "cuda_available": False  # placeholder; updated after init
+    }
+
+@app.post("/api/julia/init")
+async def init_julia_backend():
+    """Triggers Julia initialization if it hasn't started yet. Returns current status."""
+    if JULIA_STATUS == "idle":
+        await trigger_julia_init()
+    return {"status": JULIA_STATUS, "error": JULIA_INIT_ERROR_MSG}
+
 
 @app.post("/api/compile")
 def compile_graph(req: CompileRequest):
@@ -227,63 +330,69 @@ def compile_graph(req: CompileRequest):
         raise HTTPException(status_code=500, detail=f"Compilation failed: {str(e)}")
 
 @app.post("/api/simulate")
-def run_simulation(req: SimulateRequest):
+async def run_simulation(req: SimulateRequest):
     """Executes the numerical integration solver on the compiled system."""
     simp_dae = COMPILED_MODELS.get(req.compile_id)
     if not simp_dae:
         raise HTTPException(status_code=404, detail="Model compile state not found. Please compile the system first.")
-        
-    try:
-        # Build y0 list matched to the order of states in simp_dae.states
-        y0_list = []
-        for state in simp_dae.states:
-            state_str = str(state)
-            # Find in user y0 overrides, defaulting to 0.0
-            val = req.y0.get(state_str, 0.0)
-            y0_list.append(val)
-            
-        # Build parameter overrides dictionary matching Braid dot notation (e.g. mass_1.m)
-        # Note: the input params keys are already component_name.param_name, e.g. mass_1.m
-        params_dict = {}
-        for k, v in req.params.items():
-            params_dict[k] = v
-            
-        # Run Braid simulation engine
-        sol = simulate_system(
-            dae=simp_dae,
-            t_span=tuple(req.t_span),
-            y0=y0_list,
-            params=params_dict,
-            backend=req.backend,
-            method=req.method,
-            num_steps=req.num_steps
-        )
-        
-        if not sol.success:
-            raise HTTPException(status_code=500, detail=f"Solver integration failed: {getattr(sol, 'message', 'unknown solver error')}")
-            
-        # Construct response data
+
+    # Guard: if Julia is requested but not yet ready, return a descriptive error
+    if req.backend.lower() == "julia":
+        if JULIA_STATUS == "initializing":
+            raise HTTPException(
+                status_code=503,
+                detail="Julia is still initializing. This can take 1–3 minutes on first use. "
+                       "Check the Julia Status indicator and try again shortly."
+            )
+        elif JULIA_STATUS == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Julia initialization failed: {JULIA_INIT_ERROR_MSG}"
+            )
+        elif JULIA_STATUS != "ready":
+            # Unexpected state — trigger init and tell user to wait
+            await trigger_julia_init()
+            raise HTTPException(
+                status_code=503,
+                detail="Julia initialization has not started. Triggering now — please wait a moment and try again."
+            )
+
+    # --- Build common inputs ---
+    y0_list = []
+    for state in simp_dae.states:
+        val = req.y0.get(str(state), 0.0)
+        y0_list.append(val)
+
+    params_dict = dict(req.params)
+
+    def _build_response(sol, params_dict):
+        """Convert a simulation result into the JSON response dict."""
+        import numpy as np
+        import sympy as sp
+
         response_data = {
             "t": sol.t.tolist() if hasattr(sol.t, "tolist") else list(sol.t),
             "states": {}
         }
-        
+
+        sol_y = sol.y
+        # Ensure 2D: (n_states, n_steps)
+        if isinstance(sol_y, list):
+            sol_y = np.array(sol_y)
+        if sol_y.ndim == 1:
+            sol_y = sol_y.reshape(1, -1)
+
         for idx, state in enumerate(simp_dae.states):
-            state_str = str(state)
-            values = sol.y[idx]
-            response_data["states"][state_str] = values.tolist() if hasattr(values, "tolist") else list(values)
-            
+            values = sol_y[idx]
+            response_data["states"][str(state)] = values.tolist() if hasattr(values, "tolist") else list(values)
+
         # Evaluate solved assignments (algebraic variables, sensors, etc.)
         if simp_dae.solved_assignments:
-            import sympy as sp
-            # Get flat parameter values matched to simp_dae.params
             flat_params = []
             param_meta = getattr(simp_dae, "param_meta", {})
             for p in simp_dae.params:
                 val = None
                 found = False
-                
-                # Match by Symbol object key or name string key
                 if p in params_dict:
                     val = params_dict[p]
                     found = True
@@ -301,32 +410,107 @@ def run_simulation(req: SimulateRequest):
                         elif 'default' in meta:
                             val = meta['default']
                             found = True
-                            
                 if not found:
                     val = 0.0
                 flat_params.append(val)
-                
-            # Lambdify solved assignments using numpy
+
             vars_list = list(simp_dae.solved_assignments.keys())
             exprs_list = list(simp_dae.solved_assignments.values())
             eval_fn = sp.lambdify((simp_dae.t, simp_dae.states, simp_dae.params), exprs_list, 'numpy')
-            
-            num_steps_actual = len(response_data["t"])
+
             solved_values = {str(var): [] for var in vars_list}
-            
-            for i in range(num_steps_actual):
+            for i in range(len(response_data["t"])):
                 t_val = response_data["t"][i]
-                y_val = sol.y[:, i] if hasattr(sol.y, "shape") else [sol.y[j][i] for j in range(len(simp_dae.states))]
-                
+                y_val = sol_y[:, i]
                 res = eval_fn(t_val, y_val, flat_params)
                 for var_idx, var in enumerate(vars_list):
                     solved_values[str(var)].append(float(res[var_idx]))
-                    
+
             for var_str, vals in solved_values.items():
                 response_data["states"][var_str] = vals
-                
+
         return response_data
-        
+
+    try:
+        if req.backend.lower() == "julia":
+            # --- Julia path: communicate with the worker subprocess ---
+            # Resolve params dict → flat list (same logic as simulate_system)
+            import sympy as sp
+            import numpy as np
+            param_meta = getattr(simp_dae, "param_meta", {})
+            flat_params = []
+            for p in simp_dae.params:
+                val = None
+                found = False
+                if p in params_dict:
+                    val = float(params_dict[p]); found = True
+                elif p.name in params_dict:
+                    val = float(params_dict[p.name]); found = True
+                elif param_meta:
+                    sym_repr = sp.srepr(p)
+                    if sym_repr in param_meta:
+                        meta = param_meta[sym_repr]
+                        comp_dot_name = f"{meta['component']}.{meta['name']}"
+                        if comp_dot_name in params_dict:
+                            val = float(params_dict[comp_dot_name]); found = True
+                        elif 'default' in meta:
+                            val = float(meta['default']); found = True
+                if not found:
+                    val = 0.0
+                flat_params.append(val)
+
+            dae_json_str = dae_to_json(simp_dae)
+
+            async with _julia_lock:
+                resp = await _send_julia_request({
+                    "type": "simulate",
+                    "dae_json": dae_json_str,
+                    "t_span": list(req.t_span),
+                    "y0": [float(v) for v in y0_list],
+                    "params": flat_params,
+                    "method": req.method,
+                    "device": None,
+                    "num_steps": req.num_steps,
+                })
+
+            if not resp.get("ok"):
+                raise RuntimeError(resp.get("error", "Julia worker returned an error."))
+
+            import numpy as np
+
+            class _JuliaResult:
+                def __init__(self, t, y):
+                    self.t = np.array(t)
+                    self.y = np.array(y)  # shape (n_states, n_steps)
+                    self.success = True
+
+            sol = _JuliaResult(resp["t"], resp["y"])
+            return _build_response(sol, params_dict)
+
+        else:
+            # --- Non-Julia path: run directly in the asyncio thread ---
+            def _do_simulate():
+                sol = simulate_system(
+                    dae=simp_dae,
+                    t_span=tuple(req.t_span),
+                    y0=y0_list,
+                    params=params_dict,
+                    backend=req.backend,
+                    method=req.method,
+                    num_steps=req.num_steps
+                )
+                if not sol.success:
+                    raise RuntimeError(
+                        f"Solver integration failed: {getattr(sol, 'message', 'unknown solver error')}"
+                    )
+                return sol
+
+            loop = asyncio.get_event_loop()
+            sol = await loop.run_in_executor(None, _do_simulate)
+            return _build_response(sol, params_dict)
+
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()

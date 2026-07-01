@@ -205,10 +205,14 @@ def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, devic
         jac_func_raw = lambdify_jacobian(dae, 'torch')
         return simulate_torch(ode_func_raw, jac_func_raw, t_span, y0, params, method, device, **kwargs)
         
+    elif backend_lower == 'julia':
+        from backends.julia_backend import simulate_julia
+        return simulate_julia(dae, t_span, y0, params, method, device, **kwargs)
+        
     elif backend_lower == 'jax':
         raise ImportError(
             "JAX is not installed in the active environment. "
             "Please install JAX to use the 'jax' simulation backend."
         )
     else:
-        raise ValueError(f"Unknown backend '{backend}'. Supported backends: 'numpy', 'pytorch'.")
+        raise ValueError(f"Unknown backend '{backend}'. Supported backends: 'numpy', 'pytorch', 'julia'.")
