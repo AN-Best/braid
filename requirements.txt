@@ -13,3 +13,11 @@ pydantic>=2.0
 # Julia bridge (DifferentialEquations.jl backend)
 juliacall>=0.9.15
 juliapkg>=0.1.10
+
+# SUNDIALS bridge (CVODE backend)
+sundials4py>=7.8.0
+nanobind>=2.9.2
+
+# FMI export and verification
+fmpy>=0.3.20
+matplotlib>=3.5

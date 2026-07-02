@@ -209,10 +209,16 @@ def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, devic
         from backends.julia_backend import simulate_julia
         return simulate_julia(dae, t_span, y0, params, method, device, **kwargs)
         
+    elif backend_lower in ('c', 'sundials'):
+        from backends.c_backend import simulate_c
+        compile_c = kwargs.pop('compile_c', (backend_lower == 'c'))
+        compiler_required = (backend_lower == 'c')
+        return simulate_c(dae, t_span, y0, params, method, compile_c=compile_c, compiler_required=compiler_required, **kwargs)
+        
     elif backend_lower == 'jax':
         raise ImportError(
             "JAX is not installed in the active environment. "
             "Please install JAX to use the 'jax' simulation backend."
         )
     else:
-        raise ValueError(f"Unknown backend '{backend}'. Supported backends: 'numpy', 'pytorch', 'julia'.")
+        raise ValueError(f"Unknown backend '{backend}'. Supported backends: 'numpy', 'pytorch', 'julia', 'c', 'sundials'.")

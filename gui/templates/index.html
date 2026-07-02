@@ -202,6 +202,8 @@
                             <option value="numpy">NumPy / SciPy</option>
                             <option value="pytorch">PyTorch (GPU Parallel)</option>
                             <option value="julia">Julia (DifferentialEquations.jl)</option>
+                            <option value="c">C (Compiled + SUNDIALS)</option>
+                            <option value="sundials">SUNDIALS (Python Fallback)</option>
                         </select>
                     </div>
 
@@ -425,6 +427,14 @@
                 { value: 'rk4', label: 'RK4 (Fixed Step)' },
                 { value: 'backward_euler', label: 'Implicit Euler (Fixed)' },
                 { value: 'euler', label: 'Forward Euler (Fixed)' }
+            ],
+            c: [
+                { value: 'bdf', label: 'CVODE BDF (Stiff, Compiled C)' },
+                { value: 'adams', label: 'CVODE Adams (Non-stiff, Compiled C)' }
+            ],
+            sundials: [
+                { value: 'bdf', label: 'CVODE BDF (Stiff, Python Fallback)' },
+                { value: 'adams', label: 'CVODE Adams (Non-stiff, Python Fallback)' }
             ]
         };
 

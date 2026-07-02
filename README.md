@@ -81,7 +81,12 @@ Braid has a fully implemented compiler middle-end and a high-performance numeric
       - `Euler` — explicit forward Euler
     - *Batched Ensemble Simulation*: Supports batched `y0` and `params` via Julia's `EnsembleProblem` API, dispatching across CPU threads (`EnsembleThreads`) or NVIDIA GPUs (`EnsembleGPUArray` via `DiffEqGPU.jl` + `CUDA.jl`) when available.
     - *Subprocess Isolation*: Because `juliacall` holds the Python GIL during execution, the Julia worker runs in a dedicated child process (`gui/julia_worker.py`) that communicates with the FastAPI server over a newline-delimited JSON protocol, keeping the async event loop fully responsive.
+  - **C & SUNDIALS Backend (`backends/c_backend.py`)**: Seamlessly compiles the symbolic `ode_assignments` into native C code at runtime and integrates with the SUNDIALS solver suite (CVODE) via `sundials4py`.
+    - *Compiled C (`backend='c'`)*: Generates C code, compiles it into a shared library (`.dll`/`.so`) using whatever compiler is available in the path (`gcc`, `clang`, or MSVC `cl.exe`), and runs the derivatives function natively at C speed.
+    - *Python Callback (`backend='sundials'`)*: Resolves the system using SUNDIALS CVODE, but automatically falls back to evaluating derivatives via a lambdified Python callback if no C compiler is available.
+    - *Solvers*: Supports `bdf` (Implicit BDF for stiff systems) and `adams` (Explicit Adams-Moulton for non-stiff systems).
   - **GPU Acceleration & Batch Parallelization**: Supports batched initial conditions `y0` of shape `(batch_size, num_states)` and batched parameters `params` of shape `(batch_size, num_params)`. This allows running thousands of parallel simulations simultaneously on the GPU in a single vectorized pass (PyTorch backend) or via Julia's ensemble infrastructure.
+
 
 ---
 

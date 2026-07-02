@@ -597,6 +597,108 @@ def test_parallel_julia_simulation():
             
     print("Parallel Julia simulation tests passed successfully!")
 
+def test_simulation_pendulum_sundials():
+    print("\n--- Testing Simulation of Pendulum System with SUNDIALS Backend ---")
+    dae = SystemDAE()
+    t = dae.t
+    
+    x = sp.Function('x')(t)
+    y = sp.Function('y')(t)
+    x_dot = sp.Function('x_dot')(t)
+    y_dot = sp.Function('y_dot')(t)
+    lam = sp.Function('lambda')(t)
+    
+    dae.states.extend([x, y, x_dot, y_dot, lam])
+    
+    m = sp.Symbol('m')
+    g = sp.Symbol('g')
+    L = sp.Symbol('L')
+    dae.params.extend([m, g, L])
+    
+    eq0 = m * sp.Derivative(x_dot, t) + lam * x
+    eq1 = m * sp.Derivative(y_dot, t) + lam * y - m * g
+    eq2 = x**2 + y**2 - L**2
+    eq3 = sp.Derivative(x, t) - x_dot
+    eq4 = sp.Derivative(y, t) - y_dot
+    
+    dae.equations.extend([eq0, eq1, eq2, eq3, eq4])
+    
+    red = pantelides_pass(dae)
+    torn = tearing_pass(red)
+    simp = simplification_pass(torn)
+    
+    state_to_idx = {s: idx for idx, s in enumerate(simp.states)}
+    y0 = [0.0] * len(simp.states)
+    y0[state_to_idx[x]] = 1.0     # x = 1.0 (L=1.0)
+    y0[state_to_idx[y]] = 0.0     # y = 0.0
+    y0[state_to_idx[x_dot]] = 0.0 # x_dot = 0.0
+    y0[state_to_idx[y_dot]] = 0.0 # y_dot = 0.0
+    
+    params_val = [1.0, 9.81, 1.0] # m, g, L
+    t_span = (0.0, 1.5)
+    
+    for compile_val in [False, True]:
+        print(f"Simulating Pendulum with SUNDIALS backend (compile_c={compile_val})...")
+        sol_num = simulate_system(simp, t_span, y0, params_val, backend='sundials', compile_c=compile_val, num_steps=3000)
+        assert sol_num.success
+        
+        x_val = sol_num.y[state_to_idx[x]]
+        y_val = sol_num.y[state_to_idx[y]]
+        x_dot_val = sol_num.y[state_to_idx[x_dot]]
+        y_dot_val = sol_num.y[state_to_idx[y_dot]]
+        
+        len_sq = x_val**2 + y_val**2
+        np.testing.assert_allclose(len_sq, 1.0, atol=2e-2)
+        
+        energy = 0.5 * 1.0 * (x_dot_val**2 + y_dot_val**2) - 1.0 * 9.81 * y_val
+        np.testing.assert_allclose(energy, 0.0, atol=2e-2)
+    print("Pendulum SUNDIALS simulation tests passed successfully!")
+
+def test_simulation_mass_spring_damper_sundials():
+    print("\n--- Testing Simulation of Mass-Spring-Damper System with SUNDIALS Backend ---")
+    mass = Mass('mass', m=2.0)
+    spring = Spring('spring', k=10.0)
+    damper = Damper('damper', c=1.0)
+    ground = Ground('ground')
+    
+    system = System([mass, spring, damper, ground])
+    Node(system, [(mass, 'p'), (spring, 'p2'), (damper, 'p2')])
+    Node(system, [(ground, 'p'), (spring, 'p1'), (damper, 'p1')])
+    
+    dae = system.to_dae()
+    red = pantelides_pass(dae)
+    torn = tearing_pass(red)
+    simp = simplification_pass(torn)
+    
+    state_to_idx = {s: idx for idx, s in enumerate(simp.states)}
+    
+    def find_state_by_name(name):
+        for s in simp.states:
+            if s.func.__name__ == name:
+                return s
+        raise ValueError(f"State {name} not found")
+        
+    x_mass = find_state_by_name('x_mass')
+    v_mass = [s for s in simp.states if isinstance(s, sp.Derivative) and s.expr == x_mass][0]
+    
+    y0 = [0.0] * len(simp.states)
+    y0[state_to_idx[x_mass]] = 2.0
+    
+    params_val = [2.0, 10.0, 3.0]
+    t_span = (0.0, 10.0)
+    
+    for compile_val in [False, True]:
+        print(f"Simulating Mass-Spring-Damper with SUNDIALS backend (compile_c={compile_val})...")
+        sol_num = simulate_system(simp, t_span, y0, params_val, backend='sundials', compile_c=compile_val, num_steps=3000)
+        assert sol_num.success
+        
+        x_mass_vals = sol_num.y[state_to_idx[x_mass]]
+        v_mass_vals = sol_num.y[state_to_idx[v_mass]]
+        
+        assert abs(x_mass_vals[-1]) < 0.1
+        assert abs(v_mass_vals[-1]) < 0.05
+    print("Mass-Spring-Damper SUNDIALS simulation tests passed successfully!")
+
 if __name__ == "__main__":
     test_simulation_pendulum()
     test_simulation_mass_spring_damper()
@@ -606,3 +708,5 @@ if __name__ == "__main__":
     test_simulation_pendulum_julia()
     test_simulation_mass_spring_damper_julia()
     test_parallel_julia_simulation()
+    test_simulation_pendulum_sundials()
+    test_simulation_mass_spring_damper_sundials()
