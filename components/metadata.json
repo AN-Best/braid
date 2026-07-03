@@ -48,5 +48,116 @@
     "params": [],
     "ports": ["p"],
     "description": "Exposes the absolute velocity of the connected port junction."
+  },
+  "Resistor": {
+    "name": "Resistor",
+    "params": [
+      {"name": "R", "label": "Resistance (R)", "default": 1.0, "type": "number"}
+    ],
+    "ports": ["p", "n"],
+    "description": "Ideal electrical resistor. Dissipates electrical energy according to Ohm's law."
+  },
+  "Capacitor": {
+    "name": "Capacitor",
+    "params": [
+      {"name": "C", "label": "Capacitance (C)", "default": 1.0, "type": "number"}
+    ],
+    "ports": ["p", "n"],
+    "description": "Ideal electrical capacitor. Stores electrical energy in an electric field."
+  },
+  "Inductor": {
+    "name": "Inductor",
+    "params": [
+      {"name": "L", "label": "Inductance (L)", "default": 1.0, "type": "number"}
+    ],
+    "ports": ["p", "n"],
+    "description": "Ideal electrical inductor. Stores electrical energy in a magnetic field."
+  },
+  "VoltageSource": {
+    "name": "VoltageSource",
+    "params": [
+      {"name": "V", "label": "Voltage (V)", "default": 1.0, "type": "number"}
+    ],
+    "ports": ["p", "n"],
+    "description": "Ideal constant DC voltage source."
+  },
+  "CurrentSource": {
+    "name": "CurrentSource",
+    "params": [
+      {"name": "I", "label": "Current (I)", "default": 1.0, "type": "number"}
+    ],
+    "ports": ["p", "n"],
+    "description": "Ideal constant DC current source."
+  },
+  "ElectricalGround": {
+    "name": "ElectricalGround",
+    "params": [],
+    "ports": ["p"],
+    "description": "Electrical ground reference. Voltage is fixed at zero."
+  },
+  "VoltageSensor": {
+    "name": "VoltageSensor",
+    "params": [],
+    "ports": ["p"],
+    "description": "Electrical voltage sensor. Exposes the voltage potential of the connected junction."
+  },
+  "CurrentSensor": {
+    "name": "CurrentSensor",
+    "params": [],
+    "ports": ["p", "n"],
+    "description": "Electrical current sensor. Placed in series to measure branch current."
+  },
+  "ModularGround": {
+    "name": "ModularGround",
+    "params": [],
+    "ports": ["px", "py", "pz", "rx_r11", "rx_r12", "rx_r13", "rx_r21", "rx_r22", "rx_r23", "rx_r31", "rx_r32", "rx_r33"],
+    "bundle_ports": {
+      "trans": ["px", "py", "pz"],
+      "rot":   ["rx_r11", "rx_r12", "rx_r13", "rx_r21", "rx_r22", "rx_r23", "rx_r31", "rx_r32", "rx_r33"]
+    },
+    "description": "Fixed 3D ground reference anchor."
+  },
+  "ModularBody": {
+    "name": "ModularBody",
+    "params": [
+      {"name": "mass", "label": "Mass (m)", "default": 1.0, "type": "number"},
+      {"name": "ixx", "label": "Ixx", "default": 1.0, "type": "number"},
+      {"name": "iyy", "label": "Iyy", "default": 1.0, "type": "number"},
+      {"name": "izz", "label": "Izz", "default": 1.0, "type": "number"}
+    ],
+    "ports": [
+      "p0_x", "p0_y", "p0_z", "p0_r11", "p0_r12", "p0_r13", "p0_r21", "p0_r22", "p0_r23", "p0_r31", "p0_r32", "p0_r33",
+      "p1_x", "p1_y", "p1_z", "p1_r11", "p1_r12", "p1_r13", "p1_r21", "p1_r22", "p1_r23", "p1_r31", "p1_r32", "p1_r33"
+    ],
+    "bundle_ports": {
+      "p0_trans": ["p0_x", "p0_y", "p0_z"],
+      "p0_rot":   ["p0_r11", "p0_r12", "p0_r13", "p0_r21", "p0_r22", "p0_r23", "p0_r31", "p0_r32", "p0_r33"],
+      "p1_trans": ["p1_x", "p1_y", "p1_z"],
+      "p1_rot":   ["p1_r11", "p1_r12", "p1_r13", "p1_r21", "p1_r22", "p1_r23", "p1_r31", "p1_r32", "p1_r33"]
+    },
+    "description": "3D Rigid Body with quaternion orientation states and ports at CoM (p0) and end offset (p1)."
+  },
+  "ModularPinJoint": {
+    "name": "ModularPinJoint",
+    "params": [],
+    "ports": [
+      "parent_r11", "parent_r12", "parent_r13", "parent_r21", "parent_r22", "parent_r23", "parent_r31", "parent_r32", "parent_r33",
+      "child_r11", "child_r12", "child_r13", "child_r21", "child_r22", "child_r23", "child_r31", "child_r32", "child_r33"
+    ],
+    "bundle_ports": {
+      "parent": ["parent_r11", "parent_r12", "parent_r13", "parent_r21", "parent_r22", "parent_r23", "parent_r31", "parent_r32", "parent_r33"],
+      "child":  ["child_r11",  "child_r12",  "child_r13",  "child_r21",  "child_r22",  "child_r23",  "child_r31",  "child_r32",  "child_r33"]
+    },
+    "description": "3D pin (revolute) joint allowing Z rotation between parent and child frames."
+  },
+  "OrientationSensor": {
+    "name": "OrientationSensor",
+    "params": [],
+    "ports": ["r11", "r12", "r13", "r21", "r22", "r23", "r31", "r32", "r33"],
+    "bundle_ports": {
+      "r": ["r11", "r12", "r13", "r21", "r22", "r23", "r31", "r32", "r33"]
+    },
+    "description": "Measures orientation matrix elements and converts to Euler angles."
   }
 }
+

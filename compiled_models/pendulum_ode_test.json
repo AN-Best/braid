@@ -37,11 +37,11 @@
     "Add(Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2))), Mul(Integer(-1), Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))))"
   ],
   "matching": {
-    "0": "Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
-    "1": "Function('lambda')(Symbol('t'))",
-    "2": "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
-    "3": "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
-    "4": "Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))"
+    "0": "Function('lambda')(Symbol('t'))",
+    "1": "Derivative(Function('y_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "2": "Derivative(Function('x')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))",
+    "3": "Derivative(Function('x_dot')(Symbol('t')), Tuple(Symbol('t'), Integer(1)))",
+    "4": "Derivative(Function('y')(Symbol('t')), Tuple(Symbol('t'), Integer(2)))"
   },
   "differentiation_indices": [
     0,
