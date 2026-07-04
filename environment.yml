@@ -7,24 +7,11 @@ dependencies:
   - python>=3.10
   - numpy>=1.20
   - scipy>=1.7
-  - sympy>=1.8
+  - casadi>=3.6.0
   - networkx>=2.5
   - pytest>=7.0
   - pytorch>=2.0
-  # GUI server
-  - fastapi>=0.110
-  - uvicorn>=0.29
-  - pydantic>=2.0
-  - c-compiler
-  - m2w64-gcc
   - pip:
-    # Julia bridge (DifferentialEquations.jl backend)
-    # juliapkg downloads & manages a Julia installation automatically
-    - juliacall>=0.9.15
-    - juliapkg>=0.1.10
-    # SUNDIALS bridge (CVODE backend)
-    - sundials4py>=7.8.0
-    - nanobind>=2.9.2
-    # FMI export and verification
+    - torchdiffeq>=0.2.3
     - fmpy>=0.3.20
     - matplotlib>=3.5
