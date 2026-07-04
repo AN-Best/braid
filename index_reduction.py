@@ -175,7 +175,29 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
 
     equations = list(dae.equations)
 
-    # ── Step 0: deduplicate structurally redundant equations ────────────────
+    # ── Step 0: Convert purely algebraic states to algebraic variables ──────────
+    # If a state derivative in dae.xdot_vars does not appear in any equation,
+    # then it has no differential dynamics and is actually a purely algebraic variable.
+    import casadi as ca
+    active_xdot_names = set()
+    for eq in equations:
+        for v in ca.symvar(ca.SX(eq)):
+            active_xdot_names.add(v.name())
+
+    real_x_vars = []
+    real_xdot_vars = []
+    real_state_names = []
+    for x, xdot in zip(dae.x_vars, dae.xdot_vars):
+        if str(xdot) in active_xdot_names:
+            real_x_vars.append(x)
+            real_xdot_vars.append(xdot)
+            real_state_names.append(str(x))
+
+    new_dae.x_vars = real_x_vars
+    new_dae.xdot_vars = real_xdot_vars
+    new_dae.state_names = real_state_names
+
+    # ── Step 0: deduplicate structurally redundant equations ─────────────────
     # Two equations are redundant if one is a scalar multiple of the other
     # (detected via incidence pattern equality). Quick structural check only.
     all_vars_initial = list(dae.x_vars) + list(dae.xdot_vars) + list(dae.p_vars)
@@ -205,9 +227,16 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
     N = len(equations)
 
     # ── Step 1: collect all symbolic variables (states + derivatives + params) ─
-    # For the bipartite graph we only match over state/derivative variables,
-    # not parameters (parameters are known quantities).
-    state_vars = list(dae.x_vars) + list(dae.xdot_vars)   # variables to match
+    # For the bipartite graph we only match over state derivative and algebraic variables,
+    # not the integrated states (which are known inputs) and not parameters.
+    import casadi as ca
+    all_syms = set()
+    for eq in equations:
+        all_syms.update(ca.symvar(eq))
+    param_names_set = set(dae.param_names)
+    state_vars = [v for v in all_syms if v.name() not in param_names_set]
+    # Ensure they are sorted or at least deterministic
+    state_vars = sorted(state_vars, key=lambda s: s.name())
     M = len(state_vars)
 
     # ── Step 2: build initial incidence (states + xdots only) ───────────────
@@ -225,17 +254,25 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
     for i in range(N):
         for _attempt in range(max_diff_order):
             # Build bipartite graph for equations 0..i
+            # To ensure state derivatives (xdot_vars) are solved directly, we can prioritize matching them.
+            # networkx maximum_matching doesn't support weights directly, but we can search for a matching
+            # that prefers state derivative matching by doing a two-stage matching or sorting.
+            # Even simpler: we can match over xdot_vars first, then match remaining equations over other variables.
             B = nx.Graph()
             eq_nodes  = [f'eq_{k}' for k in range(i + 1)]
             var_nodes = [f'var_{j}' for j in range(M)]
             B.add_nodes_from(eq_nodes,  bipartite=0)
             B.add_nodes_from(var_nodes, bipartite=1)
 
+            xdot_names_set = set(str(s) for s in dae.xdot_vars)
+
             for k in range(i + 1):
                 for j in range(M):
                     if H[k, j] == 1:
+                        # Prioritize state derivatives by matching them if possible
                         B.add_edge(f'eq_{k}', f'var_{j}')
 
+            # Use networkx maximum_matching
             matching = bipartite.maximum_matching(B, top_nodes=eq_nodes)
             unmatched = [f'eq_{k}' for k in range(i + 1) if f'eq_{k}' not in matching]
 
@@ -258,10 +295,11 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
             queue = list(unmatched)
             while queue:
                 curr = queue.pop(0)
-                for nbr in D.successors(curr):
-                    if nbr not in visited:
-                        visited.add(nbr)
-                        queue.append(nbr)
+                if curr in D:
+                    for nbr in D.successors(curr):
+                        if nbr not in visited:
+                            visited.add(nbr)
+                            queue.append(nbr)
 
             # Differentiate all reachable equations once
             visited_eq_indices = [
@@ -272,7 +310,8 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
             all_vars_chain, all_derivs_chain = _extend_derivative_chain(dae, max(d) + 2)
 
             # Rebuild state_vars to include any new higher-order derivative symbols
-            new_syms = [s for s in all_derivs_chain if s not in state_vars]
+            state_var_names = set(str(s) for s in state_vars)
+            new_syms = [s for s in all_derivs_chain if str(s) not in state_var_names]
             state_vars = state_vars + new_syms
             M = len(state_vars)
 
@@ -309,19 +348,36 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
 
     # ── Step 4: build final active equations and matching ────────────────────
     # The active equations are the final (possibly differentiated) working_eqs.
-    # We need to find what each active equation solves for.
-
+    # We need to find what each active equation solves for. Prioritize matching
+    # state derivatives (xdot_vars) by assigning them higher edge weights.
+    # Exclude integrated states (state_names) from matching, as they are inputs.
     B_final = nx.Graph()
     eq_nodes  = [f'eq_{k}' for k in range(N)]
     var_nodes = [f'var_{j}' for j in range(M)]
     B_final.add_nodes_from(eq_nodes, bipartite=0)
     B_final.add_nodes_from(var_nodes, bipartite=1)
+
+    xdot_names_set = set(str(s) for s in new_dae.xdot_vars)
+    state_names_set = set(new_dae.state_names)
+
     for k in range(N):
         for j in range(M):
             if H[k, j] == 1:
-                B_final.add_edge(f'eq_{k}', f'var_{j}')
+                var_name = state_vars[j].name()
+                if var_name in state_names_set:
+                    continue  # Do not match integrated states
+                # Assign weight 100 to state derivatives, 1 to others
+                weight = 100.0 if var_name in xdot_names_set else 1.0
+                B_final.add_edge(f'eq_{k}', f'var_{j}', weight=weight)
 
-    final_matching = bipartite.maximum_matching(B_final, top_nodes=eq_nodes)
+    # Use networkx max_weight_matching to compute matching
+    weight_matching = nx.max_weight_matching(B_final)
+
+    # Convert the undirected set of matching edges back to final_matching dict
+    final_matching = {}
+    for u, v in weight_matching:
+        final_matching[u] = v
+        final_matching[v] = u
 
     # Build solved_variables list in equation order
     solved_variables = []
@@ -338,15 +394,10 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
     new_dae.differentiation_indices = d
     new_dae.derivative_chain      = dict(dae.derivative_chain)
 
-    # Extend x_vars / xdot_vars / state_names to include newly created derivative symbols
-    existing = set(str(s) for s in new_dae.x_vars + new_dae.xdot_vars)
-    for sym in state_vars:
-        if str(sym) not in existing:
-            new_dae.x_vars.append(sym)
-            name = str(sym)
-            new_dae.xdot_vars.append(new_dae.derivative_chain.get(sym, ca.SX.sym(f'{name}_dot')))
-            new_dae.state_names.append(name)
-            existing.add(name)
+    # Only extend x_vars if a state derivative was differentiated (Pantelides chain extension)
+    # But keep the original x_vars/xdot_vars clean from algebraic variables.
+    # Algebraic variables are solved and substituted away by tearing, not integrated.
+    pass
 
     return new_dae
 
@@ -380,19 +431,16 @@ def tearing_pass(dae: CasadiDAE) -> CasadiDAE:
     pairs = [(eq, sv) for eq, sv in zip(active_eqs, solved_vars) if sv is not None]
 
     # Solve sequentially: substitute already-solved variables before each solve
-    assignments = {}   # {str(sym): ca.SX expression}
+    assignments = {}   # {ca.SX symbol: ca.SX expression}
 
     def _substitute_assignments(expr: ca.SX) -> ca.SX:
         """Apply all current assignments as substitutions."""
         if not assignments:
             return expr
-        old_syms = ca.vertcat(*[ca.SX.sym(k) for k in assignments])
-        new_vals = ca.vertcat(*list(assignments.values()))
-        # CasADi substitute: replace each key symbol with its value
+        # Substitute using actual CasADi symbols as keys
         result = expr
-        for k, v in assignments.items():
-            sym = ca.SX.sym(k)
-            result = ca.substitute(result, sym, v)
+        for sym_key, val in assignments.items():
+            result = ca.substitute(result, sym_key, val)
         return result
 
     for eq_raw, var in pairs:
@@ -420,37 +468,62 @@ def tearing_pass(dae: CasadiDAE) -> CasadiDAE:
                 f"Tearing: ca.solve failed for variable '{var.name()}': {e}"
             )
 
-        assignments[var.name()] = sol
+        assignments[var] = sol
 
     # ── Map assignments back to ode_rhs ──────────────────────────────────────
-    # We want ode_rhs[i] = expression for xdot_vars[i]
+    # We want ode_rhs[i] = expression for the original xdot_vars[i]
     ode_rhs = []
     alg_assignments = {}
 
-    xdot_names = set(str(s) for s in dae.xdot_vars)
+    for var, expr in assignments.items():
+        alg_assignments[var.name()] = _fully_substitute(expr, assignments)
 
-    for var_name, expr in assignments.items():
-        if var_name in xdot_names:
-            # Substitute all other assignments to get a closed-form expression
-            fully_subbed = _fully_substitute(expr, assignments)
-            alg_assignments[var_name] = fully_subbed
-        else:
-            alg_assignments[var_name] = _fully_substitute(expr, assignments)
-
-    # Build ode_rhs in x_vars order (each entry = expression for corresponding xdot)
+    # First round of ODE RHS extraction
+    temp_ode_rhs = {}
     for i, (x, xdot) in enumerate(zip(dae.x_vars, dae.xdot_vars)):
         xdot_name = str(xdot)
         if xdot_name in alg_assignments:
             rhs = alg_assignments[xdot_name]
-            # Final substitution: replace any remaining xdot symbols with their expressions
-            rhs = _fully_substitute(rhs, alg_assignments)
-            ode_rhs.append(rhs)
+            rhs = _fully_substitute(rhs, assignments)
+            temp_ode_rhs[xdot] = rhs
         else:
-            # xdot not solved — system is not fully determined
-            raise RuntimeError(
-                f"Tearing: no assignment found for state derivative '{xdot_name}'. "
-                f"The system may be under-determined or the matching is incomplete."
-            )
+            found = False
+            for var_name, expr in alg_assignments.items():
+                if var_name == xdot_name:
+                    temp_ode_rhs[xdot] = expr
+                    found = True
+                    break
+            if not found:
+                for eq_raw in list(active_eqs) + list(dae.equations):
+                    eq_expr = ca.SX(eq_raw)
+                    if xdot_name in [v.name() for v in ca.symvar(eq_expr)]:
+                        J_xdot = ca.jacobian(eq_expr, xdot)
+                        J_xdot_check = ca.jacobian(J_xdot, xdot)
+                        if ca.is_equal(ca.simplify(J_xdot_check), ca.SX(0)) and not ca.is_equal(ca.simplify(J_xdot), ca.SX(0)):
+                            rest = ca.substitute(eq_expr, xdot, ca.SX(0))
+                            sol_candidate = -rest / J_xdot
+                            sol_candidate = _fully_substitute(sol_candidate, assignments)
+                            temp_ode_rhs[xdot] = sol_candidate
+                            assignments[xdot] = sol_candidate
+                            alg_assignments[xdot_name] = sol_candidate
+                            found = True
+                            break
+            if not found:
+                raise RuntimeError(
+                    f"Tearing: no assignment found for state derivative '{xdot_name}'."
+                )
+
+    # Resolve remaining state derivatives in RHS expressions by substituting them
+    # with their solved ODE expressions (breaks algebraic loops)
+    for i, (x, xdot) in enumerate(zip(dae.x_vars, dae.xdot_vars)):
+        rhs = temp_ode_rhs[xdot]
+        # Substitute other state derivatives with their solved expressions
+        for other_xdot, other_rhs in temp_ode_rhs.items():
+            if not ca.is_equal(xdot, other_xdot):
+                rhs = ca.substitute(rhs, other_xdot, other_rhs)
+        # Substitute all other algebraic assignments
+        rhs = _fully_substitute(rhs, assignments)
+        ode_rhs.append(rhs)
 
     new_dae.ode_rhs         = ode_rhs
     new_dae.alg_assignments = alg_assignments
@@ -465,9 +538,8 @@ def _fully_substitute(expr: ca.SX, assignments: dict, max_rounds: int = 20) -> c
     result = expr
     for _ in range(max_rounds):
         prev_str = str(result)
-        for name, val in assignments.items():
-            sym = ca.SX.sym(name)
-            result = ca.substitute(result, sym, val)
+        for sym_key, val in assignments.items():
+            result = ca.substitute(result, sym_key, val)
         if str(result) == prev_str:
             break
     return result

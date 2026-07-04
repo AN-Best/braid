@@ -1,118 +1,74 @@
+"""
+simulation.py
+=============
+CasADi-based simulation backend interface for Braid.
+Provides `simulate_system` which compiles a DAE system into IR,
+lowers it to a NumPy/PyTorch backend, and solves it.
+"""
+
 import os
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-
-import sympy as sp
 import numpy as np
-from json_ir import from_json
+import ir
+from lowering import (
+    make_numpy_ode,
+    make_numpy_jacobian,
+    make_torch_ode,
+    make_torch_jacobian,
+)
 
-# --- Core Compilation and Integration ---
-
-def lambdify_system(dae, backend: str):
-    """Compiles the ODE assignments of a SystemDAE object into a target backend function.
-    
-    The resulting function has the signature:
-        f(t, states, params)
-    """
-    t = dae.t
-    states = dae.states
-    params = dae.params
-    
-    exprs = []
-    for state in states:
-        state_deriv = sp.Derivative(state, t)
-        if state_deriv in dae.ode_assignments:
-            exprs.append(dae.ode_assignments[state_deriv])
-        else:
-            raise ValueError(f"Derivative of state {state} ({state_deriv}) is not defined in ode_assignments.")
-            
-    # Map friendly names to SymPy's internal lambdify backend names
-    backend_map = {
-        'numpy': 'numpy',
-        'pytorch': 'torch',
-        'torch': 'torch',
-        'jax': 'jax'
-    }
-    target_backend = backend_map.get(backend.lower(), backend)
-    
-    return sp.lambdify((t, states, params), exprs, target_backend)
-
-def lambdify_jacobian(dae, backend: str):
-    """Compiles the analytical Jacobian of the ODE assignments into a target backend function.
-    
-    The resulting function has the signature:
-        J(t, states, params)
-    """
-    t = dae.t
-    states = dae.states
-    params = dae.params
-    
-    exprs = []
-    for state in states:
-        state_deriv = sp.Derivative(state, t)
-        if state_deriv in dae.ode_assignments:
-            exprs.append(dae.ode_assignments[state_deriv])
-        else:
-            raise ValueError(f"Derivative of state {state} ({state_deriv}) is not defined in ode_assignments.")
-            
-    # Compute symbolic Jacobian with respect to states
-    J_sym = sp.Matrix(exprs).jacobian(states)
-    
-    backend_map = {
-        'numpy': 'numpy',
-        'pytorch': 'torch',
-        'torch': 'torch',
-        'jax': 'jax'
-    }
-    target_backend = backend_map.get(backend.lower(), backend)
-    
-    return sp.lambdify((t, states, params), J_sym, target_backend)
 
 def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, device=None, **kwargs):
-    """Integrates the ODE system defined by the SystemDAE object using the selected backend and method.
-    
+    """
+    Integrates the DAE system using the selected backend and method.
+
     Parameters:
-        dae: A SystemDAE instance, a JSON file path, or a JSON string.
+        dae: A CasadiDAE instance, a Braid IR dict, a JSON file path, or a JSON string.
         t_span: Tuple of (t0, tf).
         y0: List/array of initial state values.
-        params: List/array of parameter values.
-        backend: String ('numpy', 'pytorch', 'jax').
+        params: Dict of {name: value} or ordered list/array.
+        backend: String ('numpy' or 'pytorch' [alias: 'torch']).
         method: Solver method.
         device: The PyTorch device (for 'pytorch' backend).
         kwargs: Extra config (e.g. num_steps=1000).
     """
+    # ── 1. Resolve IR ────────────────────────────────────────────────────────
     if isinstance(dae, (str, os.PathLike)):
-        path_str = os.fspath(dae)
-        if os.path.isfile(path_str):
-            with open(path_str, 'r', encoding='utf-8') as f:
-                json_str = f.read()
+        dae_resolved = ir.from_json(dae)
+    elif isinstance(dae, dict):
+        dae_resolved = dae
+    else:
+        # It's a CasadiDAE or System
+        from base import System
+        if isinstance(dae, System):
+            dae_resolved = ir.compile_to_ir(dae)
         else:
-            json_str = path_str
-        dae = from_json(json_str)
+            # Assume it's a CasadiDAE
+            from index_reduction import pantelides_pass, tearing_pass
+            dae = pantelides_pass(dae)
+            dae = tearing_pass(dae)
+            dae_resolved = ir.from_json(ir.to_json(dae))
 
-    # Resolve params if passed as a dictionary or None (to use defaults)
+    # ── 2. Resolve Parameters ────────────────────────────────────────────────
+    # Resolve parameters if passed as a dictionary or None (to use defaults)
     if isinstance(params, dict) or params is None:
         param_dict = params or {}
         flat_params = []
-        param_meta = getattr(dae, "param_meta", {})
+        param_meta = dae_resolved.get("param_meta", {})
         
-        for p in dae.params:
+        for p_name in dae_resolved['params']:
             val = None
             found = False
             
-            # 1. Match by Symbol object key
-            if p in param_dict:
-                val = param_dict[p]
+            # Match options:
+            # 1. Match by name string key
+            if p_name in param_dict:
+                val = param_dict[p_name]
                 found = True
-            # 2. Match by Symbol name string key
-            elif p.name in param_dict:
-                val = param_dict[p.name]
-                found = True
-            # 3. Match by component-dot-parameter key if param_meta is available
+            # 2. Match by component-dot-parameter key if param_meta is available
             elif param_meta:
-                sym_repr = sp.srepr(p)
-                if sym_repr in param_meta:
-                    meta = param_meta[sym_repr]
-                    comp_dot_name = f"{meta['component']}.{meta['name']}"
+                if p_name in param_meta:
+                    meta = param_meta[p_name]
+                    comp_dot_name = f"{meta['component']}.{meta['param']}"
                     if comp_dot_name in param_dict:
                         val = param_dict[comp_dot_name]
                         found = True
@@ -122,7 +78,7 @@ def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, devic
             
             if not found:
                 raise ValueError(
-                    f"Parameter '{p.name}' is missing and has no default value. "
+                    f"Parameter '{p_name}' is missing and has no default value. "
                     f"Please specify it in your params dictionary."
                 )
             flat_params.append(val)
@@ -191,34 +147,33 @@ def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, devic
             else:
                 params = np.array(flat_params)
 
+    # ── 3. Validate Model Type ────────────────────────────────────────────────
+    # These backends only support pure explicit ODE models.
+    model_type = dae_resolved.get('model_type', 'ODE')
+    if model_type != 'ODE':
+        raise ValueError(
+            f"The resolved model has model_type='{model_type}' (DAE). "
+            f"These simulation solvers only support pure explicit ODE models. "
+            f"Please compile the system to an explicit ODE first."
+        )
+
     backend_lower = backend.lower()
     
     if backend_lower in ('numpy', 'scipy'):
         from backends.numpy_backend import simulate_numpy
-        ode_func_raw = lambdify_system(dae, 'numpy')
-        jac_func_raw = lambdify_jacobian(dae, 'numpy')
-        return simulate_numpy(ode_func_raw, jac_func_raw, t_span, y0, params, method, **kwargs)
+        ode_func = make_numpy_ode(dae_resolved)
+        jac_func = make_numpy_jacobian(dae_resolved)
+        return simulate_numpy(ode_func, jac_func, t_span, y0, params, method, **kwargs)
         
     elif backend_lower in ('pytorch', 'torch'):
         from backends.torch_backend import simulate_torch
-        ode_func_raw = lambdify_system(dae, 'torch')
-        jac_func_raw = lambdify_jacobian(dae, 'torch')
-        return simulate_torch(ode_func_raw, jac_func_raw, t_span, y0, params, method, device, **kwargs)
+        ode_func = make_torch_ode(dae_resolved)
+        jac_func = make_torch_jacobian(dae_resolved)
+        return simulate_torch(ode_func, jac_func, t_span, y0, params, method, device, **kwargs)
         
     elif backend_lower == 'julia':
         from backends.julia_backend import simulate_julia
-        return simulate_julia(dae, t_span, y0, params, method, device, **kwargs)
+        return simulate_julia(dae_resolved, t_span, y0, params, method, **kwargs)
         
-    elif backend_lower in ('c', 'sundials'):
-        from backends.c_backend import simulate_c
-        compile_c = kwargs.pop('compile_c', (backend_lower == 'c'))
-        compiler_required = (backend_lower == 'c')
-        return simulate_c(dae, t_span, y0, params, method, compile_c=compile_c, compiler_required=compiler_required, **kwargs)
-        
-    elif backend_lower == 'jax':
-        raise ImportError(
-            "JAX is not installed in the active environment. "
-            "Please install JAX to use the 'jax' simulation backend."
-        )
     else:
-        raise ValueError(f"Unknown backend '{backend}'. Supported backends: 'numpy', 'pytorch', 'julia', 'c', 'sundials'.")
+        raise ValueError(f"Unknown backend '{backend}'. Supported backends: 'numpy', 'pytorch' (alias: 'torch'), 'julia'.")

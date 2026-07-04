@@ -1,6 +1,5 @@
 import sys
 import os
-import sympy as sp
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from components.linear_mechanical_1D import Mass, Spring, Damper, Ground
@@ -18,14 +17,14 @@ def test_assembly():
     Node(system, [(mass, 'p'), (spring, 'p2'), (damper, 'p2')])
     Node(system, [(ground, 'p'), (spring, 'p1'), (damper, 'p1')])
 
-    print("Converting to SystemDAE...")
+    print("Converting to CasadiDAE...")
     dae = system.to_dae()
     
     print("\n--- Original Equations ---")
     for eq in dae.equations:
         print(eq)
 
-    print("\nStates count:", len(dae.states))
+    print("\nStates count:", len(dae.x_vars))
     print("Equations count:", len(dae.equations))
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ _OP_MAP = {
     ca.OP_SIN:           'sin',
     ca.OP_COS:           'cos',
     ca.OP_TAN:           'tan',
-    ca.OP_ABS:           'abs',
+    ca.OP_FABS:          'abs',
     ca.OP_POW:           'pow',
     ca.OP_FMIN:          'min',
     ca.OP_FMAX:          'max',
@@ -178,9 +178,14 @@ def to_json(dae: CasadiDAE) -> str:
             'expr':  ast,
         })
 
+    # Determine model type: if there are no algebraic constraints and we have
+    # explicit RHS formulas, it is an ODE. Otherwise, it is a DAE.
+    model_type = 'ODE' if len(dae.state_names) == len(dae.x_vars) else 'DAE'
+
     data = {
         'version':    '2.0',
         'backend':    'braid-casadi',
+        'model_type': model_type,
         'states':     dae.state_names,
         'params':     dae.param_names,
         'param_meta': dae.param_meta,

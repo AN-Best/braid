@@ -201,16 +201,17 @@ class System:
 
         # Merge sensor mappings
         dae.sensor_mappings.update(self.sensor_mappings)
-        for sensor in self.sensors:
+        for sensor in self.sensors + self.components:
             if hasattr(sensor, 'sensor_mapping'):
                 dae.sensor_mappings[sensor.name] = {
                     'type': sensor.__class__.__name__,
                     **sensor.sensor_mapping,
                 }
-            dae.components.append({
-                'name':   sensor.name,
-                'domain': getattr(sensor, 'domain', 'continuous'),
-            })
+            if sensor in self.sensors:
+                dae.components.append({
+                    'name':   sensor.name,
+                    'domain': getattr(sensor, 'domain', 'continuous'),
+                })
 
         return dae
 

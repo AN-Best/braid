@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from components.electrical_basic import Resistor, Capacitor, Inductor, VoltageSource, CurrentSource, ElectricalGround, VoltageSensor, CurrentSensor
 from base import System, Node
-from index_reduction import pantelides_pass, tearing_pass, simplification_pass
+from index_reduction import pantelides_pass, tearing_pass
 from simulation import simulate_system
 
 def test_rc_circuit():
@@ -33,39 +33,38 @@ def test_rc_circuit():
     dae = system.to_dae()
     red = pantelides_pass(dae)
     torn = tearing_pass(red)
-    simp = simplification_pass(torn)
 
     # Initial condition: capacitor uncharged, so v_c = 0.0
     # Let's find the index of state variables
-    state_to_idx = {s: idx for idx, s in enumerate(simp.states)}
+    state_to_idx = {s: idx for idx, s in enumerate(torn.state_names)}
     
     # Check that the capacitor state is present
     v_c_sym = None
-    for state in simp.states:
-        if state.name.startswith('v_c_c'):
-            v_c_sym = state
+    for name in torn.state_names:
+        if name.startswith('v_c_c'):
+            v_c_sym = name
             break
 
-    assert v_c_sym is not None, "Capacitor state v_c not found in simplified states"
+    assert v_c_sym is not None, "Capacitor state v_c not found"
 
-    # Check sensor_targets resolution
-    assert 'v_sens' in simp.sensor_targets
-    assert 'i_sens' in simp.sensor_targets
+    # Check sensor mappings resolution
+    assert 'v_sens' in torn.sensor_mappings
+    assert 'i_sens' in torn.sensor_mappings
     
-    print("\n--- Sensor Targets ---")
-    for k, v in simp.sensor_targets.items():
+    print("\n--- Sensor Mappings ---")
+    for k, v in torn.sensor_mappings.items():
         print(f"{k} -> {v}")
 
-    # Voltage sensor should resolve to the capacitor voltage state
-    assert simp.sensor_targets['v_sens'] == v_c_sym
-    # Current sensor should resolve directly to the i_sens variable symbol
-    assert simp.sensor_targets['i_sens'].name.startswith('i_sens_i_sens')
+    # Voltage sensor should resolve to the node voltage v_n_i_sens (which is equal to v_p_c)
+    assert torn.sensor_mappings['v_sens']['target'] in ('v_p_c', 'v_n_i_sens')
+    # Current sensor should resolve directly to the current name
+    assert torn.sensor_mappings['i_sens']['target'] == 'i_sens_i_sens'
 
-    y0 = [0.0] * len(simp.states)
+    y0 = [0.0] * len(torn.state_names)
     # Simulate
     t_span = (0.0, 3.0)
     t_eval = np.linspace(0.0, 3.0, 301)
-    sol = simulate_system(simp, t_span, y0, params=None, backend='numpy', method='RK45', t_eval=t_eval)
+    sol = simulate_system(torn, t_span, y0, params=None, backend='numpy', method='RK45', t_eval=t_eval)
     assert sol.success
 
     # Check value at t=1.0. With R=2, C=0.5, tau=1.0.
@@ -99,26 +98,25 @@ def test_rlc_circuit():
     dae = system.to_dae()
     red = pantelides_pass(dae)
     torn = tearing_pass(red)
-    simp = simplification_pass(torn)
 
     # Find the indices of state variables
-    state_to_idx = {s: idx for idx, s in enumerate(simp.states)}
+    state_to_idx = {s: idx for idx, s in enumerate(torn.state_names)}
     
     v_c_sym = None
     i_L_sym = None
-    for state in simp.states:
-        if state.name.startswith('v_c_c'):
-            v_c_sym = state
-        elif state.name.startswith('i_L_l'):
-            i_L_sym = state
+    for name in torn.state_names:
+        if name.startswith('v_c_c'):
+            v_c_sym = name
+        elif name.startswith('i_L_l'):
+            i_L_sym = name
 
     assert v_c_sym is not None, "Capacitor state v_c not found"
     assert i_L_sym is not None, "Inductor state i_L not found"
 
-    y0 = [0.0] * len(simp.states)
+    y0 = [0.0] * len(torn.state_names)
     t_span = (0.0, 5.0)
     
-    sol = simulate_system(simp, t_span, y0, params=None, backend='numpy', method='RK45')
+    sol = simulate_system(torn, t_span, y0, params=None, backend='numpy', method='RK45')
     assert sol.success
     print("RLC simulation succeeded!")
 

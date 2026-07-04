@@ -1,6 +1,5 @@
 import os
 import sys
-import sympy as sp
 import numpy as np
 import pytest
 
@@ -8,10 +7,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from base import System, Node
 from components.linear_mechanical_1D import Mass, Spring, Damper, Ground
-from index_reduction import pantelides_pass, tearing_pass, simplification_pass
+from index_reduction import pantelides_pass, tearing_pass
+from ir import compile_to_ir
 from fmu_exporter import export_fmu
 from fmpy import read_model_description, simulate_fmu
 
+import shutil
+has_compiler = shutil.which("gcc") or shutil.which("clang") or shutil.which("cl") or shutil.which("x86_64-w64-mingw32-gcc")
+
+@pytest.mark.skipif(not has_compiler, reason="No compatible C compiler (gcc, clang, cl.exe) found in PATH")
 def test_fmi3_model_exchange_export():
     print("\n--- Testing FMI 3.0 Model Exchange Export ---")
     
@@ -25,10 +29,7 @@ def test_fmi3_model_exchange_export():
     Node(system, [(mass, 'p'), (spring, 'p2'), (damper, 'p2')])
     Node(system, [(ground, 'p'), (spring, 'p1'), (damper, 'p1')])
     
-    dae = system.to_dae()
-    red = pantelides_pass(dae)
-    torn = tearing_pass(red)
-    simp = simplification_pass(torn)
+    ir_model = compile_to_ir(system)
     
     # 2. Export to FMI 3.0 FMU
     test_dir = os.path.dirname(os.path.abspath(__file__))
@@ -39,7 +40,7 @@ def test_fmi3_model_exchange_export():
         os.remove(fmu_path)
         
     print(f"Exporting test model to: {fmu_path} ...")
-    export_fmu(simp, fmu_path, model_id="mass_spring_damper_test")
+    export_fmu(ir_model, fmu_path, model_id="mass_spring_damper_test")
     
     assert os.path.exists(fmu_path), "FMU file was not created!"
     
