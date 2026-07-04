@@ -15,3 +15,6 @@ dependencies:
     - torchdiffeq>=0.2.3
     - fmpy>=0.3.20
     - matplotlib>=3.5
+    - solve-dae>=0.2.3
+    - torchdae @ git+https://github.com/yousef-rafat/torchdae.git
+

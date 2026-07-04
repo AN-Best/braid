@@ -158,3 +158,81 @@ def make_torch_jacobian(ir: dict):
         return J
 
     return jac_func
+
+
+def make_torch_residuals(ir: dict):
+    """
+    Returns a callable  F(t, x, yp, p) → residuals  using PyTorch.
+
+    Args:
+        ir: Braid IR dict with 'residuals' and 'xdots'.
+
+    Returns:
+        Callable with signature  F(t: Tensor, x: Tensor, yp: Tensor, p: Tensor) → Tensor same shape as x
+    """
+    state_idx = {name: i for i, name in enumerate(ir['states'])}
+    xdot_idx  = {name: i for i, name in enumerate(ir.get('xdots', []))}
+    param_idx = {name: i for i, name in enumerate(ir['params'])}
+    res_asts  = ir['residuals']
+
+    def residual_func(t: torch.Tensor, x: torch.Tensor, yp: torch.Tensor, p: torch.Tensor) -> torch.Tensor:
+        components = [
+            _eval_ast_dae(ast, x, yp, p, state_idx, xdot_idx, param_idx)
+            for ast in res_asts
+        ]
+        return torch.stack(components, dim=-1)
+
+    return residual_func
+
+
+def _eval_ast_dae(node: dict, x: torch.Tensor, yp: torch.Tensor, p: torch.Tensor,
+                  state_idx: dict, xdot_idx: dict, param_idx: dict) -> torch.Tensor:
+    op = node['op']
+
+    if op == 'var':
+        name = node['name']
+        if name in state_idx:
+            i = state_idx[name]
+            return x[..., i]
+        elif name in xdot_idx:
+            i = xdot_idx[name]
+            return yp[..., i]
+        else:
+            raise KeyError(f"Variable '{name}' not found in states or xdots.")
+
+    if op == 'param':
+        i = param_idx[node['name']]
+        if p.dim() == 1:
+            return p[i]
+        return p[..., i]
+
+    if op == 'const':
+        val = float(node['value'])
+        return torch.tensor(val, dtype=x.dtype, device=x.device)
+
+    args = [_eval_ast_dae(a, x, yp, p, state_idx, xdot_idx, param_idx) for a in node['args']]
+
+    dispatch = {
+        'add':  lambda a: a[0] + a[1],
+        'sub':  lambda a: a[0] - a[1],
+        'mul':  lambda a: a[0] * a[1],
+        'div':  lambda a: a[0] / a[1],
+        'neg':  lambda a: -a[0],
+        'pow':  lambda a: torch.pow(a[0], a[1]),
+        'sin':  lambda a: torch.sin(a[0]),
+        'cos':  lambda a: torch.cos(a[0]),
+        'tan':  lambda a: torch.tan(a[0]),
+        'exp':  lambda a: torch.exp(a[0]),
+        'log':  lambda a: torch.log(a[0]),
+        'sqrt': lambda a: torch.sqrt(a[0]),
+        'abs':  lambda a: torch.abs(a[0]),
+        'min':  lambda a: torch.minimum(a[0], a[1]),
+        'max':  lambda a: torch.maximum(a[0], a[1]),
+        'ite':  lambda a: torch.where(a[0] != 0.0, a[1], a[2]),
+    }
+
+    if op not in dispatch:
+        raise NotImplementedError(f"Torch lowering: unsupported op '{op}'")
+
+    return dispatch[op](args)
+

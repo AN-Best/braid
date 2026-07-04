@@ -76,3 +76,66 @@ def simulate_torch(ode_func_raw, jac_func_raw, t_span, y0, params, method, devic
 
     # Return as numpy array for simulation outputs, keeping cpu compatibility
     return PyTorchSimulationResult(t_eval.cpu().numpy(), y_out.cpu().numpy())
+
+
+def simulate_torch_dae(residual_func, t_span, y0, yp0, params, method, device=None, **kwargs):
+    import torchdae
+    if method is None:
+        method = 'radau'
+
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = torch.device(device)
+
+    y = torch.as_tensor(y0, dtype=torch.float64, device=device)
+    params_tensor = torch.as_tensor(params, dtype=torch.float64, device=device)
+
+    is_batched = (y.dim() > 1)
+    if not is_batched:
+        # torchdae requires batch dim
+        y_input = y.unsqueeze(0)
+    else:
+        y_input = y
+
+    if yp0 is not None:
+        yp = torch.as_tensor(yp0, dtype=torch.float64, device=device)
+        if not is_batched:
+            yp_input = yp.unsqueeze(0)
+        else:
+            yp_input = yp
+    else:
+        yp_input = torch.zeros_like(y_input)
+
+    def F_wrapper(t_val, y_val, yp_val):
+        t_scalar = float(t_val)
+        return residual_func(t_scalar, y_val, yp_val, params_tensor)
+
+    num_steps = kwargs.get('num_steps', 100)
+
+    method_lower = method.lower()
+    if method_lower in ('radau', 'solve_radau_iia5'):
+        sol = torchdae.solve_radau_iia5(F_wrapper, t_span, y_input, yp0=yp_input, n_steps=num_steps)
+    elif method_lower in ('bdf1', 'solve_bdf1'):
+        sol = torchdae.solve_bdf1(F_wrapper, t_span, y_input, yp0=yp_input, n_steps=num_steps)
+    elif method_lower in ('bdf2', 'solve_bdf2'):
+        sol = torchdae.solve_bdf2(F_wrapper, t_span, y_input, yp0=yp_input, n_steps=num_steps)
+    elif method_lower in ('generalized_alpha', 'solve_generalized_alpha'):
+        sol = torchdae.solve_generalized_alpha(F_wrapper, t_span, y_input, yp0=yp_input, n_steps=num_steps)
+    else:
+        raise ValueError(
+            f"Unknown PyTorch DAE method '{method}'. "
+            "Supported: 'radau', 'bdf1', 'bdf2', 'generalized_alpha'"
+        )
+
+    ts = sol.ts.cpu().numpy()
+    ys = sol.ys
+
+    if is_batched:
+        # Permute from [time, batch, states] to [batch, states, time]
+        y_out = ys.permute(1, 2, 0).cpu().numpy()
+    else:
+        # Permute from [time, 1, states] to [states, time]
+        y_out = ys.squeeze(1).permute(1, 0).cpu().numpy()
+
+    return PyTorchSimulationResult(ts, y_out)
+

@@ -96,3 +96,73 @@ def make_numpy_jacobian(ir: dict):
         return J
 
     return jac_func
+
+
+
+def make_numpy_residuals(ir: dict):
+    """
+    Returns a callable  F(t, x, yp, p) → residuals  using pure NumPy.
+
+    Args:
+        ir: Braid IR dict with 'residuals' and 'xdots'.
+
+    Returns:
+        Callable with signature  F(t: float, x: np.ndarray, yp: np.ndarray, p: np.ndarray) → np.ndarray
+    """
+    state_idx = {name: i for i, name in enumerate(ir['states'])}
+    xdot_idx  = {name: i for i, name in enumerate(ir.get('xdots', []))}
+    param_idx = {name: i for i, name in enumerate(ir['params'])}
+    res_asts  = ir['residuals']
+
+    def residual_func(t: float, x: np.ndarray, yp: np.ndarray, p: np.ndarray) -> np.ndarray:
+        return np.array([
+            _eval_ast_dae(ast, x, yp, p, state_idx, xdot_idx, param_idx)
+            for ast in res_asts
+        ], dtype=np.float64)
+
+    return residual_func
+
+
+def _eval_ast_dae(node: dict, x: np.ndarray, yp: np.ndarray, p: np.ndarray,
+                  state_idx: dict, xdot_idx: dict, param_idx: dict):
+    op = node['op']
+
+    if op == 'var':
+        name = node['name']
+        if name in state_idx:
+            return x[state_idx[name]]
+        elif name in xdot_idx:
+            return yp[xdot_idx[name]]
+        else:
+            raise KeyError(f"Variable '{name}' not found in states or xdots.")
+    if op == 'param':
+        return p[param_idx[node['name']]]
+    if op == 'const':
+        return float(node['value'])
+
+    args = [_eval_ast_dae(a, x, yp, p, state_idx, xdot_idx, param_idx) for a in node['args']]
+
+    dispatch = {
+        'add':  lambda a: a[0] + a[1],
+        'sub':  lambda a: a[0] - a[1],
+        'mul':  lambda a: a[0] * a[1],
+        'div':  lambda a: a[0] / a[1],
+        'neg':  lambda a: -a[0],
+        'pow':  lambda a: np.power(a[0], a[1]),
+        'sin':  lambda a: np.sin(a[0]),
+        'cos':  lambda a: np.cos(a[0]),
+        'tan':  lambda a: np.tan(a[0]),
+        'exp':  lambda a: np.exp(a[0]),
+        'log':  lambda a: np.log(a[0]),
+        'sqrt': lambda a: np.sqrt(a[0]),
+        'abs':  lambda a: np.abs(a[0]),
+        'min':  lambda a: np.minimum(a[0], a[1]),
+        'max':  lambda a: np.maximum(a[0], a[1]),
+        'ite':  lambda a: np.where(a[0] != 0.0, a[1], a[2]),
+    }
+
+    if op not in dispatch:
+        raise NotImplementedError(f"NumPy lowering: unsupported op '{op}'")
+
+    return dispatch[op](args)
+

@@ -66,6 +66,10 @@ class CasadiDAE:
         # {ca.SX solved_var: ca.SX expression}
         self.alg_assignments: dict      = {}
 
+        # DAE implicit residuals (residuals = 0). Used when model_type == 'DAE'
+        self.residuals: list            = []
+
+
     # ── Stacked vector accessors ────────────────────────────────────────────
 
     @property
@@ -135,7 +139,9 @@ class CasadiDAE:
         new.invariants           = list(self.invariants)
         new.ode_rhs              = list(self.ode_rhs)
         new.alg_assignments      = dict(self.alg_assignments)
+        new.residuals            = list(self.residuals)
         return new
+
 
     def __repr__(self) -> str:
         return (
@@ -143,5 +149,7 @@ class CasadiDAE:
             f"params={self.param_names}, "
             f"n_equations={len(self.equations)}, "
             f"n_active={len(self.active_equations)}, "
-            f"ode_ready={len(self.ode_rhs) == len(self.x_vars)})"
+            f"ode_ready={len(self.ode_rhs) == len(self.x_vars)}, "
+            f"dae_ready={len(self.residuals) > 0})"
         )
+

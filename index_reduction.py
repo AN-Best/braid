@@ -157,7 +157,7 @@ def _extend_derivative_chain(
 # Pantelides Pass
 # ─────────────────────────────────────────────────────────────────────────────
 
-def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
+def pantelides_pass(dae: CasadiDAE, allow_dae: bool = False) -> CasadiDAE:
     """
     Perform structural index reduction using the Pantelides algorithm.
 
@@ -176,26 +176,48 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
     equations = list(dae.equations)
 
     # ── Step 0: Convert purely algebraic states to algebraic variables ──────────
-    # If a state derivative in dae.xdot_vars does not appear in any equation,
-    # then it has no differential dynamics and is actually a purely algebraic variable.
-    import casadi as ca
-    active_xdot_names = set()
-    for eq in equations:
-        for v in ca.symvar(ca.SX(eq)):
-            active_xdot_names.add(v.name())
+    # If a state derivative does not appear in any equation, it has no differential dynamics.
+    # However, if the state variable itself appears in a coordinate constraint, it must be kept
+    # because that constraint will be differentiated by Pantelides, introducing the derivative.
+    if allow_dae:
+        new_dae.x_vars = list(dae.x_vars)
+        new_dae.xdot_vars = list(dae.xdot_vars)
+        new_dae.state_names = list(dae.state_names)
+    else:
+        import casadi as ca
+        x_names_set = set(str(x) for x in dae.x_vars)
+        param_names_set = set(dae.param_names)
 
-    real_x_vars = []
-    real_xdot_vars = []
-    real_state_names = []
-    for x, xdot in zip(dae.x_vars, dae.xdot_vars):
-        if str(xdot) in active_xdot_names:
-            real_x_vars.append(x)
-            real_xdot_vars.append(xdot)
-            real_state_names.append(str(x))
+        # Identify all variables that appear in coordinate constraints
+        coord_constraint_vars = set()
+        for eq in equations:
+            eq_vars = [v.name() for v in ca.symvar(ca.SX(eq))]
+            has_x_var = any(name in x_names_set for name in eq_vars)
+            only_x_vars = all(name in x_names_set or name in param_names_set for name in eq_vars)
+            if has_x_var and only_x_vars:
+                coord_constraint_vars.update(eq_vars)
 
-    new_dae.x_vars = real_x_vars
-    new_dae.xdot_vars = real_xdot_vars
-    new_dae.state_names = real_state_names
+        active_xdot_names = set()
+        for eq in equations:
+            for v in ca.symvar(ca.SX(eq)):
+                active_xdot_names.add(v.name())
+
+        real_x_vars = []
+        real_xdot_vars = []
+        real_state_names = []
+        for x, xdot in zip(dae.x_vars, dae.xdot_vars):
+            if str(xdot) in active_xdot_names or str(x) in coord_constraint_vars:
+                real_x_vars.append(x)
+                real_xdot_vars.append(xdot)
+                real_state_names.append(str(x))
+
+        new_dae.x_vars = real_x_vars
+        new_dae.xdot_vars = real_xdot_vars
+        new_dae.state_names = real_state_names
+
+
+
+
 
     # ── Step 0: deduplicate structurally redundant equations ─────────────────
     # Two equations are redundant if one is a scalar multiple of the other
@@ -239,8 +261,9 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
     # Add all xdot_vars explicitly in case they don't appear in any equation yet
     for xd in dae.xdot_vars:
         all_syms.add(xd)
-    param_names_set = set(dae.param_names)
-    state_names_set_init = set(dae.state_names)
+    param_names_set = set(new_dae.param_names)
+    state_names_set_init = set(new_dae.state_names)
+
     state_vars = [v for v in all_syms if v.name() not in param_names_set]
     # Ensure they are sorted or at least deterministic
     state_vars = sorted(state_vars, key=lambda s: s.name())
@@ -272,28 +295,38 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
             B.add_nodes_from(var_nodes, bipartite=1)
 
             xdot_names_set = set(str(s) for s in dae.xdot_vars)
+            x_names_set = set(str(x) for x in dae.x_vars)
+            param_names_set = set(dae.param_names)
 
             for k in range(i + 1):
-                # Classify this equation's neighbors:
-                #   nonstate_neighbors: xdot_vars or higher-order derivatives (not in state_names_set_init)
-                #   state_neighbors:    original x_vars (in state_names_set_init)
-                nonstate_js = [j for j in range(M) if H[k, j] == 1
-                               and state_vars[j].name() not in state_names_set_init]
-                state_js    = [j for j in range(M) if H[k, j] == 1
-                               and state_vars[j].name() in state_names_set_init]
+                # Determine the set of variables in equation k
+                eq_var_names = [state_vars[j].name() for j in range(M) if H[k, j] == 1]
 
-                if nonstate_js:
-                    # Equation has xdot / higher-deriv neighbors → match only to those
-                    for j in nonstate_js:
-                        B.add_edge(f'eq_{k}', f'var_{j}')
-                elif len(state_js) == 1:
-                    # Exactly one x_var neighbor → "assignment" style (e.g. x_ground = 0)
-                    # Allow matching to that single x_var
-                    B.add_edge(f'eq_{k}', f'var_{state_js[0]}')
-                else:
-                    # Multiple x_var neighbors, no xdot neighbors → holonomic / kinematic constraint
-                    # DO NOT add any edges: equation must remain unmatched → Pantelides differentiates it
+                # An equation is a holonomic/kinematic coordinate constraint if:
+                # 1. It contains at least one integrated state variable (x_vars)
+                # 2. All of its variables are either integrated states (x_vars) or parameters (no xdot_vars, no algebraic variables)
+                has_x_var = any(name in x_names_set for name in eq_var_names)
+                only_x_vars = all(name in x_names_set or name in param_names_set for name in eq_var_names)
+
+                is_coordinate_constraint = has_x_var and only_x_vars
+
+                if is_coordinate_constraint:
+                    # Coordinate constraint: do not add edges so it remains unmatched and gets differentiated
                     pass
+                else:
+                    # Prioritize derivative matching (nonstate neighbors)
+                    nonstate_js = [j for j in range(M) if H[k, j] == 1
+                                   and state_vars[j].name() not in state_names_set_init]
+                    if nonstate_js:
+                        for j in nonstate_js:
+                            B.add_edge(f'eq_{k}', f'var_{j}')
+                    else:
+                        # Allow matching to state neighbors
+                        for j in range(M):
+                            if H[k, j] == 1:
+                                B.add_edge(f'eq_{k}', f'var_{j}')
+
+
 
             # Use networkx maximum_matching
             matching = bipartite.maximum_matching(B, top_nodes=eq_nodes)
@@ -436,7 +469,7 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
 # Tearing Pass
 # ─────────────────────────────────────────────────────────────────────────────
 
-def tearing_pass(dae: CasadiDAE) -> CasadiDAE:
+def tearing_pass(dae: CasadiDAE, allow_dae: bool = False) -> CasadiDAE:
     """
     Solve the active equations for the matched solved variables using
     CasADi's linear solve: ca.solve(J, -b).
@@ -446,10 +479,11 @@ def tearing_pass(dae: CasadiDAE) -> CasadiDAE:
         b = F_k evaluated at solved_var_k = 0
 
     If J is independent of solved_vars (system is linear), this gives the
-    exact solution. Otherwise, raises a NotImplementedError.
+    exact solution. Otherwise, raises a NotImplementedError (unless allow_dae is True).
 
     Returns a new CasadiDAE with:
-        ode_rhs[i] = explicit expression for xdot_vars[i]
+        ode_rhs[i] = explicit expression for xdot_vars[i] (if ODE)
+        residuals = implicit residual expressions F(t, y, y_dot, p) = 0 (if DAE)
         alg_assignments = {algebraic_var: expression, ...}
     """
     new_dae = dae.copy_structure()
@@ -462,19 +496,18 @@ def tearing_pass(dae: CasadiDAE) -> CasadiDAE:
 
     # Solve sequentially: substitute already-solved variables before each solve
     assignments = {}   # {ca.SX symbol: ca.SX expression}
+    unsolved_pairs = []
 
     def _substitute_assignments(expr: ca.SX) -> ca.SX:
         """Apply all current assignments as substitutions."""
         if not assignments:
             return expr
-        # Substitute using actual CasADi symbols as keys
         result = expr
         for sym_key, val in assignments.items():
             result = ca.substitute(result, sym_key, val)
         return result
 
     for eq_raw, var in pairs:
-        # Apply prior assignments to reduce the equation
         eq = _substitute_assignments(ca.SX(eq_raw))
 
         # Compute J = ∂eq/∂var  and  b = eq|_{var=0}
@@ -483,32 +516,59 @@ def tearing_pass(dae: CasadiDAE) -> CasadiDAE:
 
         # Check linearity: J should not depend on var
         J_check = ca.jacobian(J, var)
-        if not ca.is_equal(ca.simplify(J_check), ca.SX(0)):
-            raise NotImplementedError(
-                f"Tearing: equation for '{var.name()}' is nonlinear in that variable. "
-                "Nonlinear algebraic loops require the 'casadi' backend (IDAS solver) "
-                "and cannot be lowered to explicit form."
-            )
+        is_linear = ca.is_equal(ca.simplify(J_check), ca.SX(0))
 
-        # Solve: J * var = -b  →  var = -b / J  (scalar case)
-        try:
-            sol = ca.solve(J, -b)
-        except Exception as e:
-            raise RuntimeError(
-                f"Tearing: ca.solve failed for variable '{var.name()}': {e}"
-            )
+        sol = None
+        if is_linear:
+            try:
+                sol = ca.solve(J, -b)
+            except Exception:
+                pass
 
-        assignments[var] = sol
+        if sol is not None:
+            assignments[var] = sol
+        else:
+            if not allow_dae:
+                raise NotImplementedError(
+                    f"Tearing: equation for '{var.name()}' is nonlinear in that variable. "
+                    "Nonlinear algebraic loops require the 'casadi' backend (IDAS solver) "
+                    "and cannot be lowered to explicit form."
+                )
+            else:
+                unsolved_pairs.append((eq_raw, var))
 
-    # ── Map assignments back to ode_rhs ──────────────────────────────────────
-    # We want ode_rhs[i] = expression for the original xdot_vars[i]
+    # If allow_dae is True and we have unsolved variables, build a DAE representation
+    has_unsolved_xdots = any(xd not in assignments for xd in dae.xdot_vars)
+    if allow_dae and (unsolved_pairs or has_unsolved_xdots or len(dae.x_vars) != len(dae.xdot_vars)):
+        # We represent the DAE using implicit residuals.
+        # States are all x_vars, and derivatives are xdot_vars.
+        # Any algebraic variables that were successfully solved are substituted out.
+        xdot_names_set = set(str(xd) for xd in dae.xdot_vars)
+        alg_only_assignments = {k: v for k, v in assignments.items() if k.name() not in xdot_names_set}
+
+        residuals = []
+        for eq_raw in active_eqs:
+            res_eq = ca.SX(eq_raw)
+            for sym_key, val in alg_only_assignments.items():
+                res_eq = ca.substitute(res_eq, sym_key, val)
+            residuals.append(res_eq)
+
+
+        new_dae.residuals = [_fully_substitute(res, alg_only_assignments) for res in residuals]
+
+
+        # Keep alg_assignments for reference
+        new_dae.alg_assignments = {k.name(): _fully_substitute(v, assignments) for k, v in assignments.items()}
+        new_dae.ode_rhs = [] # Explicit ODE is empty in DAE mode
+        return new_dae
+
+    # Otherwise, proceed to standard explicit ODE mapping
     ode_rhs = []
     alg_assignments = {}
 
     for var, expr in assignments.items():
         alg_assignments[var.name()] = _fully_substitute(expr, assignments)
 
-    # First round of ODE RHS extraction
     temp_ode_rhs = {}
     for i, (x, xdot) in enumerate(zip(dae.x_vars, dae.xdot_vars)):
         xdot_name = str(xdot)
@@ -543,21 +603,18 @@ def tearing_pass(dae: CasadiDAE) -> CasadiDAE:
                     f"Tearing: no assignment found for state derivative '{xdot_name}'."
                 )
 
-    # Resolve remaining state derivatives in RHS expressions by substituting them
-    # with their solved ODE expressions (breaks algebraic loops)
     for i, (x, xdot) in enumerate(zip(dae.x_vars, dae.xdot_vars)):
         rhs = temp_ode_rhs[xdot]
-        # Substitute other state derivatives with their solved expressions
         for other_xdot, other_rhs in temp_ode_rhs.items():
             if not ca.is_equal(xdot, other_xdot):
                 rhs = ca.substitute(rhs, other_xdot, other_rhs)
-        # Substitute all other algebraic assignments
         rhs = _fully_substitute(rhs, assignments)
         ode_rhs.append(rhs)
 
     new_dae.ode_rhs         = ode_rhs
     new_dae.alg_assignments = alg_assignments
     return new_dae
+
 
 
 def _fully_substitute(expr: ca.SX, assignments: dict, max_rounds: int = 20) -> ca.SX:

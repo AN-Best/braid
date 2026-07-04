@@ -23,3 +23,17 @@ def simulate_numpy(ode_func_raw, jac_func_raw, t_span, y0, params, method, **kwa
         sol = scipy.integrate.solve_ivp(f, t_span, y0, method=method, **kwargs)
         
     return sol
+
+
+def simulate_numpy_dae(residual_func, t_span, y0, yp0, params, method, **kwargs):
+    from solve_dae.integrate import solve_dae
+    if method is None:
+        method = 'Radau'
+
+    # solve_dae expects F(t, y, yp) -> residuals
+    def res(t_val, y_val, yp_val):
+        return residual_func(t_val, y_val, yp_val, params)
+
+    sol = solve_dae(res, t_span, y0, yp0, method=method, **kwargs)
+    return sol
+

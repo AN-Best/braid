@@ -116,9 +116,10 @@ def test_four_bar_approx_ode():
     t_span = (0.0, 2.0)
     y0     = [0.1, 0.0]
 
-    sol_np    = simulate_system(dae, t_span, y0, params=None, backend='numpy',   method='RK45')
-    sol_torch = simulate_system(dae, t_span, y0, params=None, backend='pytorch', method='dopri5')
-    sol_julia = simulate_system(dae, t_span, y0, params=None, backend='julia',   method='Tsit5()')
+    sol_np    = simulate_system(dae, t_span, y0, params=None, backend='numpy',   method='RK45', rtol=1e-6, atol=1e-8)
+    sol_torch = simulate_system(dae, t_span, y0, params=None, backend='pytorch', method='dopri5', rtol=1e-6, atol=1e-8)
+    sol_julia = simulate_system(dae, t_span, y0, params=None, backend='julia',   method='Tsit5()', rtol=1e-6, atol=1e-8)
+
 
     assert sol_np.success and sol_torch.success and sol_julia.success
 
@@ -271,20 +272,22 @@ def test_four_bar_true_dae():
     omega2_0, omega3_0 = np.linalg.solve(J_vel, rhs_vel)
 
     y0 = [theta1_0, omega1_0, theta2_0, omega2_0, theta3_0, omega3_0]
-    print(f"  Initial: θ₁={theta1_0:.4f}, ω₁={omega1_0:.4f}, "
-          f"θ₂={theta2_0:.4f}, ω₂={omega2_0:.4f}, θ₃={theta3_0:.4f}, ω₃={omega3_0:.4f}")
+    print(f"  Initial: theta1={theta1_0:.4f}, omega1={omega1_0:.4f}, "
+          f"theta2={theta2_0:.4f}, omega2={omega2_0:.4f}, theta3={theta3_0:.4f}, omega3={omega3_0:.4f}")
 
     # ── Simulate one full crank revolution ───────────────────────────────────
     t_span = (0.0, 2 * np.pi / OMEGA1_VAL)
-    print(f"  Simulating for t ∈ [0, {t_span[1]:.3f}] (one crank revolution)...")
+    print(f"  Simulating for t in [0, {t_span[1]:.3f}] (one crank revolution)...")
 
-    sol = simulate_system(torn, t_span, y0, params=None, backend='numpy', method='RK45')
+    sol = simulate_system(torn, t_span, y0, params=None, backend='numpy', method='RK45', rtol=1e-8, atol=1e-10)
+
     assert sol.success, "Simulation failed"
 
     theta1_f = sol.y[0][-1]
     theta2_f = sol.y[2][-1]
     theta3_f = sol.y[4][-1]
-    print(f"  Final:   θ₁={theta1_f:.4f}, θ₂={theta2_f:.4f}, θ₃={theta3_f:.4f}")
+    print(f"  Final:   theta1={theta1_f:.4f}, theta2={theta2_f:.4f}, theta3={theta3_f:.4f}")
+
 
     # Crank should complete one full revolution (θ₁ increases by 2π)
     assert np.abs(theta1_f - (theta1_0 + 2*np.pi)) < 1e-3, \
@@ -302,4 +305,5 @@ def test_four_bar_true_dae():
     g2_f = L1_VAL*np.sin(theta1_f) + L2_VAL*np.sin(theta2_f) - L3_VAL*np.sin(theta3_f)
     print(f"  Position constraint drift after 1 rev: g1={g1_f:.2e}, g2={g2_f:.2e}")
     print("  (Non-zero drift is expected without Baumgarte stabilization.)")
-    print("  Test 2 PASSED ✓")
+    print("  Test 2 PASSED")
+

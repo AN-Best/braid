@@ -151,32 +151,46 @@ def to_json(dae: CasadiDAE) -> str:
     """
     Serialize a compiled CasadiDAE (post-tearing) to a Braid IR JSON string.
 
-    Requires dae.ode_rhs to be populated (call tearing_pass first).
+    Requires either dae.ode_rhs or dae.residuals to be populated.
 
     Returns:
         JSON string — portable, no CasADi dependency to consume.
     """
-    if not dae.ode_rhs:
+    if not dae.ode_rhs and not getattr(dae, 'residuals', []):
         raise ValueError(
-            "dae.ode_rhs is empty. Run tearing_pass() before serializing to JSON IR."
+            "Both dae.ode_rhs and dae.residuals are empty. Run tearing_pass() before serializing to JSON IR."
         )
 
     state_name_set = set(dae.state_names)
     param_name_set = set(dae.param_names)
 
-    # Walk each ODE RHS expression and convert to AST
+    # Walk each ODE RHS expression and convert to AST (if ODE)
     ode_rhs_json = []
-    for state_name, rhs_expr in zip(dae.state_names, dae.ode_rhs):
-        try:
-            ast = sx_to_ast(ca.SX(rhs_expr), state_name_set, param_name_set)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to serialize ODE RHS for state '{state_name}': {e}"
-            )
-        ode_rhs_json.append({
-            'state': state_name,
-            'expr':  ast,
-        })
+    if dae.ode_rhs:
+        for state_name, rhs_expr in zip(dae.state_names, dae.ode_rhs):
+            try:
+                ast = sx_to_ast(ca.SX(rhs_expr), state_name_set, param_name_set)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to serialize ODE RHS for state '{state_name}': {e}"
+                )
+            ode_rhs_json.append({
+                'state': state_name,
+                'expr':  ast,
+            })
+
+    # Walk each residual expression and convert to AST (if DAE)
+    residuals_json = []
+    if getattr(dae, 'residuals', []):
+        # We need state derivative names as well for residual AST walk
+        xdot_name_set = set(dae.xdot_names)
+        combined_names = state_name_set | xdot_name_set
+        for i, res_expr in enumerate(dae.residuals):
+            try:
+                ast = sx_to_ast(ca.SX(res_expr), combined_names, param_name_set)
+            except Exception as e:
+                raise RuntimeError(f"Failed to serialize DAE residual at index {i}: {e}")
+            residuals_json.append(ast)
 
     # Serialize invariants (constraint equations differentiated)
     invariants_json = []
@@ -187,24 +201,29 @@ def to_json(dae: CasadiDAE) -> str:
         except Exception as e:
             raise RuntimeError(f"Failed to serialize invariant constraint: {e}")
 
-    # Determine model type: if there are no algebraic constraints and we have
-    # explicit RHS formulas, it is an ODE. Otherwise, it is a DAE.
-    model_type = 'ODE' if len(dae.state_names) == len(dae.x_vars) else 'DAE'
+    # Determine model type
+    if getattr(dae, 'residuals', []):
+        model_type = 'DAE'
+    else:
+        model_type = 'ODE' if len(dae.state_names) == len(dae.x_vars) else 'DAE'
 
     data = {
         'version':    '2.0',
         'backend':    'braid-casadi',
         'model_type': model_type,
         'states':     dae.state_names,
+        'xdots':      dae.xdot_names,
         'params':     dae.param_names,
         'param_meta': dae.param_meta,
         'components': dae.components,
         'ode_rhs':    ode_rhs_json,
+        'residuals':  residuals_json,
         'invariants': invariants_json,
         'sensor_mappings': dae.sensor_mappings,
     }
 
     return json.dumps(data, indent=2)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -263,13 +282,14 @@ def load(path: str) -> dict:
 # Convenience: full compile pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 
-def compile_to_ir(system) -> dict:
+def compile_to_ir(system, allow_dae: bool = False) -> dict:
     """
     Full pipeline convenience function:
         System  →  pantelides_pass  →  tearing_pass  →  IR dict
 
     Args:
         system: A braid.base.System instance with Node() connections applied.
+        allow_dae: If True, allows compiling to implicit DAE residuals rather than explicit ODE.
 
     Returns:
         IR dict ready for lowering.
@@ -277,6 +297,8 @@ def compile_to_ir(system) -> dict:
     from index_reduction import pantelides_pass, tearing_pass
 
     dae = system.to_dae()
-    dae = pantelides_pass(dae)
-    dae = tearing_pass(dae)
+    dae = pantelides_pass(dae, allow_dae=allow_dae)
+    dae = tearing_pass(dae, allow_dae=allow_dae)
     return json.loads(to_json(dae))
+
+

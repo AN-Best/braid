@@ -40,13 +40,15 @@ def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, devic
         # It's a CasadiDAE or System
         from base import System
         if isinstance(dae, System):
-            dae_resolved = ir.compile_to_ir(dae)
+            dae_resolved = ir.compile_to_ir(dae, allow_dae=kwargs.get('allow_dae', True))
         else:
             # Assume it's a CasadiDAE
             from index_reduction import pantelides_pass, tearing_pass
-            dae = pantelides_pass(dae)
-            dae = tearing_pass(dae)
+            dae = pantelides_pass(dae, allow_dae=kwargs.get('allow_dae', True))
+            dae = tearing_pass(dae, allow_dae=kwargs.get('allow_dae', True))
             dae_resolved = ir.from_json(ir.to_json(dae))
+
+
 
     # ── 2. Resolve Parameters ────────────────────────────────────────────────
     # Resolve parameters if passed as a dictionary or None (to use defaults)
@@ -149,33 +151,49 @@ def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, devic
             else:
                 params = np.array(flat_params)
 
-    # ── 3. Validate Model Type ────────────────────────────────────────────────
-    # These backends only support pure explicit ODE models.
+    # ── 3. Validate and Route Model Type ──────────────────────────────────────
     model_type = dae_resolved.get('model_type', 'ODE')
-    if model_type != 'ODE':
-        raise ValueError(
-            f"The resolved model has model_type='{model_type}' (DAE). "
-            f"These simulation solvers only support pure explicit ODE models. "
-            f"Please compile the system to an explicit ODE first."
-        )
-
     backend_lower = backend.lower()
-    
+
+    if model_type == 'DAE':
+        yp0 = kwargs.pop('yp0', None)
+        if backend_lower in ('numpy', 'scipy'):
+            from backends.numpy_backend import simulate_numpy_dae
+            from lowering.numpy_lowering import make_numpy_residuals
+            res_func = make_numpy_residuals(dae_resolved)
+            return simulate_numpy_dae(res_func, t_span, y0, yp0, params, method, **kwargs)
+
+        elif backend_lower in ('pytorch', 'torch'):
+            from backends.torch_backend import simulate_torch_dae
+            from lowering.torch_lowering import make_torch_residuals
+            res_func = make_torch_residuals(dae_resolved)
+            return simulate_torch_dae(res_func, t_span, y0, yp0, params, method, device, **kwargs)
+
+        elif backend_lower == 'julia':
+            from backends.julia_backend import simulate_julia
+            return simulate_julia(dae_resolved, t_span, y0, params, method, yp0=yp0, **kwargs)
+
+        else:
+            raise ValueError(f"DAE simulation is not supported on backend '{backend}'.")
+
+
+    # Explicit ODE path
     if backend_lower in ('numpy', 'scipy'):
         from backends.numpy_backend import simulate_numpy
         ode_func = make_numpy_ode(dae_resolved)
         jac_func = make_numpy_jacobian(dae_resolved)
         return simulate_numpy(ode_func, jac_func, t_span, y0, params, method, **kwargs)
-        
+
     elif backend_lower in ('pytorch', 'torch'):
         from backends.torch_backend import simulate_torch
         ode_func = make_torch_ode(dae_resolved)
         jac_func = make_torch_jacobian(dae_resolved)
         return simulate_torch(ode_func, jac_func, t_span, y0, params, method, device, **kwargs)
-        
+
     elif backend_lower == 'julia':
         from backends.julia_backend import simulate_julia
         return simulate_julia(dae_resolved, t_span, y0, params, method, **kwargs)
-        
+
     else:
         raise ValueError(f"Unknown backend '{backend}'. Supported backends: 'numpy', 'pytorch' (alias: 'torch'), 'julia'.")
+
