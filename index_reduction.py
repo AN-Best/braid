@@ -229,11 +229,18 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
     # ── Step 1: collect all symbolic variables (states + derivatives + params) ─
     # For the bipartite graph we only match over state derivative and algebraic variables,
     # not the integrated states (which are known inputs) and not parameters.
+    # IMPORTANT: always seed with ALL xdot_vars so that derivative variables which don't
+    # yet appear in any original equation (e.g. dtheta2, dtheta3 in a constraint-only DAE)
+    # are still available to be matched once Pantelides differentiates those constraints.
     import casadi as ca
     all_syms = set()
     for eq in equations:
         all_syms.update(ca.symvar(eq))
+    # Add all xdot_vars explicitly in case they don't appear in any equation yet
+    for xd in dae.xdot_vars:
+        all_syms.add(xd)
     param_names_set = set(dae.param_names)
+    state_names_set_init = set(dae.state_names)
     state_vars = [v for v in all_syms if v.name() not in param_names_set]
     # Ensure they are sorted or at least deterministic
     state_vars = sorted(state_vars, key=lambda s: s.name())
@@ -267,10 +274,26 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
             xdot_names_set = set(str(s) for s in dae.xdot_vars)
 
             for k in range(i + 1):
-                for j in range(M):
-                    if H[k, j] == 1:
-                        # Prioritize state derivatives by matching them if possible
+                # Classify this equation's neighbors:
+                #   nonstate_neighbors: xdot_vars or higher-order derivatives (not in state_names_set_init)
+                #   state_neighbors:    original x_vars (in state_names_set_init)
+                nonstate_js = [j for j in range(M) if H[k, j] == 1
+                               and state_vars[j].name() not in state_names_set_init]
+                state_js    = [j for j in range(M) if H[k, j] == 1
+                               and state_vars[j].name() in state_names_set_init]
+
+                if nonstate_js:
+                    # Equation has xdot / higher-deriv neighbors → match only to those
+                    for j in nonstate_js:
                         B.add_edge(f'eq_{k}', f'var_{j}')
+                elif len(state_js) == 1:
+                    # Exactly one x_var neighbor → "assignment" style (e.g. x_ground = 0)
+                    # Allow matching to that single x_var
+                    B.add_edge(f'eq_{k}', f'var_{state_js[0]}')
+                else:
+                    # Multiple x_var neighbors, no xdot neighbors → holonomic / kinematic constraint
+                    # DO NOT add any edges: equation must remain unmatched → Pantelides differentiates it
+                    pass
 
             # Use networkx maximum_matching
             matching = bipartite.maximum_matching(B, top_nodes=eq_nodes)
@@ -389,10 +412,17 @@ def pantelides_pass(dae: CasadiDAE) -> CasadiDAE:
         else:
             solved_variables.append(None)
 
+    # Collect original invariants (equations that were differentiated)
+    invariants = []
+    for k in range(N):
+        if d[k] > 0:
+            invariants.append(dae.equations[k])
+
     new_dae.active_equations      = working_eqs
     new_dae.solved_variables      = solved_variables
     new_dae.differentiation_indices = d
     new_dae.derivative_chain      = dict(dae.derivative_chain)
+    new_dae.invariants            = invariants
 
     # Only extend x_vars if a state derivative was differentiated (Pantelides chain extension)
     # But keep the original x_vars/xdot_vars clean from algebraic variables.

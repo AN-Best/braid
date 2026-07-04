@@ -68,11 +68,13 @@ def simulate_system(dae, t_span, y0, params, backend='numpy', method=None, devic
             elif param_meta:
                 if p_name in param_meta:
                     meta = param_meta[p_name]
-                    comp_dot_name = f"{meta['component']}.{meta['param']}"
-                    if comp_dot_name in param_dict:
-                        val = param_dict[comp_dot_name]
-                        found = True
-                    elif 'default' in meta:
+                    # Only attempt component.param lookup if metadata has those keys
+                    if 'component' in meta and 'param' in meta:
+                        comp_dot_name = f"{meta['component']}.{meta['param']}"
+                        if comp_dot_name in param_dict:
+                            val = param_dict[comp_dot_name]
+                            found = True
+                    if not found and 'default' in meta:
                         val = meta['default']
                         found = True
             

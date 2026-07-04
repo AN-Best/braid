@@ -30,29 +30,12 @@ def simulate_torch(ode_func_raw, jac_func_raw, t_span, y0, params, method, devic
     def f(t_val, y_vec):
         # t_val from torchdiffeq is a scalar tensor
         t_scalar = float(t_val.cpu().item()) if t_val.dim() == 0 else float(t_val[0].cpu().item())
-        
-        if is_batched:
-            y_list_input = [y_vec[:, i] for i in range(y_vec.shape[1])]
-        else:
-            y_list_input = [y_vec[i] for i in range(len(y_vec))]
-            
-        if params_tensor.dim() > 1:
-            params_list_input = [params_tensor[:, i] for i in range(params_tensor.shape[1])]
-        else:
-            params_list_input = [params_tensor[i] for i in range(len(params_tensor))]
-            
-        res = ode_func_raw(t_scalar, y_list_input, params_list_input)
-        
-        stack_dim = -1 if is_batched else 0
-        
-        tensors = []
-        for r in res:
-            t_r = torch.as_tensor(r, dtype=torch.float64, device=device)
-            if is_batched and t_r.dim() == 0:
-                t_r = t_r.expand(y_vec.shape[0])
-            tensors.append(t_r)
-            
-        return torch.stack(tensors, dim=stack_dim)
+
+        # ode_func_raw (from torch_lowering.make_torch_ode) expects:
+        #   t: scalar, x: (..., n_states) tensor, p: (n_params,) or (..., n_params) tensor
+        # Pass tensors directly — no list unpacking needed.
+        result = ode_func_raw(t_scalar, y_vec, params_tensor)
+        return result
 
     # Resolve evaluation times
     t_eval = kwargs.get('t_eval', None)

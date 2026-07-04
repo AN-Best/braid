@@ -55,6 +55,7 @@ class CasadiDAE:
         # derivative_chain: maps x_sym → xdot_sym → xddot_sym ...
         # Used so the Pantelides differentiator can produce higher-order terms.
         self.derivative_chain: dict     = {}  # {ca.SX: ca.SX}  x→xdot, xdot→xddot
+        self.invariants: list           = []  # list of ca.SX original equations differentiated
 
         # ── After tearing (tearing_pass) ────────────────────────────────────
         # ode_rhs[i] is the explicit expression for d(x_vars[i])/dt
@@ -131,6 +132,7 @@ class CasadiDAE:
         new.solved_variables     = list(self.solved_variables)
         new.differentiation_indices = list(self.differentiation_indices)
         new.derivative_chain     = dict(self.derivative_chain)
+        new.invariants           = list(self.invariants)
         new.ode_rhs              = list(self.ode_rhs)
         new.alg_assignments      = dict(self.alg_assignments)
         return new

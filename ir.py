@@ -178,6 +178,15 @@ def to_json(dae: CasadiDAE) -> str:
             'expr':  ast,
         })
 
+    # Serialize invariants (constraint equations differentiated)
+    invariants_json = []
+    for inv_expr in getattr(dae, 'invariants', []):
+        try:
+            ast = sx_to_ast(ca.SX(inv_expr), state_name_set, param_name_set)
+            invariants_json.append(ast)
+        except Exception as e:
+            raise RuntimeError(f"Failed to serialize invariant constraint: {e}")
+
     # Determine model type: if there are no algebraic constraints and we have
     # explicit RHS formulas, it is an ODE. Otherwise, it is a DAE.
     model_type = 'ODE' if len(dae.state_names) == len(dae.x_vars) else 'DAE'
@@ -191,6 +200,7 @@ def to_json(dae: CasadiDAE) -> str:
         'param_meta': dae.param_meta,
         'components': dae.components,
         'ode_rhs':    ode_rhs_json,
+        'invariants': invariants_json,
         'sensor_mappings': dae.sensor_mappings,
     }
 
