@@ -43,7 +43,9 @@ def _eval_ast(node: dict, x: np.ndarray, p: np.ndarray,
         'min':  lambda a: np.minimum(a[0], a[1]),
         'max':  lambda a: np.maximum(a[0], a[1]),
         'ite':  lambda a: np.where(a[0] != 0.0, a[1], a[2]),
+        'atan2': lambda a: np.arctan2(a[0], a[1]),
     }
+
 
     if op not in dispatch:
         raise NotImplementedError(f"NumPy lowering: unsupported op '{op}'")
@@ -159,7 +161,9 @@ def _eval_ast_dae(node: dict, x: np.ndarray, yp: np.ndarray, p: np.ndarray,
         'min':  lambda a: np.minimum(a[0], a[1]),
         'max':  lambda a: np.maximum(a[0], a[1]),
         'ite':  lambda a: np.where(a[0] != 0.0, a[1], a[2]),
+        'atan2': lambda a: np.arctan2(a[0], a[1]),
     }
+
 
     if op not in dispatch:
         raise NotImplementedError(f"NumPy lowering: unsupported op '{op}'")

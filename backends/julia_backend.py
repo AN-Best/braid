@@ -159,7 +159,10 @@ end
     if atol is not None:
         solve_opts.append(f"abstol={atol}")
     if is_dae:
-        solve_opts.append("initializealg=NoInit()")
+        initializealg = kwargs.get('initializealg', 'NoInit()')
+        if initializealg:
+            solve_opts.append(f"initializealg={initializealg}")
+
 
 
     solve_opts_str = ", ".join(solve_opts)
@@ -313,12 +316,14 @@ print(JSON.json(out))
     try:
         cmd = ["julia", temp_path]
         proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.stderr:
+            print("--- JULIA RUN STDERR ---")
+            print(proc.stderr)
         if proc.returncode != 0:
             print("--- JULIA RUN STDOUT ---")
             print(proc.stdout)
-            print("--- JULIA RUN STDERR ---")
-            print(proc.stderr)
             raise RuntimeError(f"Julia execution failed with exit code {proc.returncode}")
+
             
         result = json.loads(proc.stdout)
         t_arr = np.array(result["t"])

@@ -43,7 +43,9 @@ def ast_to_julia_string(node: dict, state_names: list, param_names: list, xdot_n
         'min':  lambda a: f"min({a[0]}, {a[1]})",
         'max':  lambda a: f"max({a[0]}, {a[1]})",
         'ite':  lambda a: f"({a[0]} != 0.0 ? {a[1]} : {a[2]})",
+        'atan2': lambda a: f"atan({a[0]}, {a[1]})",
     }
+
 
     if op not in dispatch:
         raise NotImplementedError(f"Julia lowering: unsupported op '{op}'")

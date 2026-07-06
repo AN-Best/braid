@@ -71,7 +71,9 @@ _OP_MAP = {
     ca.OP_SQ:            'sq',    # x² → handled as pow(x, 2)
     ca.OP_TWICE:         'twice', # 2*x → handled as mul(2, x)
     ca.OP_INV:           'inv',   # 1/x → handled as div(1, x)
+    ca.OP_ATAN2:         'atan2',
 }
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
