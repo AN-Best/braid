@@ -1,0 +1,122 @@
+<?xml version="1.0"?>
+<robot name="wind_turbine">
+  <!-- Base Link: The static ground foundation -->
+  <link name="base_link">
+    <inertial>
+      <mass value="10000.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="1000.0" ixy="0" ixz="0" iyy="1000.0" iyz="0" izz="1000.0"/>
+    </inertial>
+  </link>
+
+  <!-- Tower Link: stands vertical along Z -->
+  <link name="tower">
+    <inertial>
+      <mass value="5000.0"/>
+      <origin xyz="0 0 5.0" rpy="0 0 0"/>
+      <inertia ixx="41800.0" ixy="0" ixz="0" iyy="41800.0" iyz="0" izz="100.0"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="10.0" radius="0.4"/>
+      </geometry>
+      <origin xyz="0 0 5.0" rpy="0 0 0"/>
+    </visual>
+  </link>
+
+  <!-- Yaw Joint: rotates the tower (and everything above) around Z-axis -->
+  <joint name="yaw_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="tower"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+
+  <!-- Nacelle Link: sits at the top of the tower (Z=10.0) -->
+  <link name="nacelle">
+    <inertial>
+      <mass value="1000.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="100.0" ixy="0" ixz="0" iyy="200.0" iyz="0" izz="200.0"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="2.0 1.0 1.0"/>
+      </geometry>
+      <origin xyz="0.5 0 0" rpy="0 0 0"/>
+    </visual>
+  </link>
+
+  <!-- Tower to Nacelle Fixed Joint: Places nacelle at tower top -->
+  <joint name="tower_to_nacelle" type="fixed">
+    <parent link="tower"/>
+    <child link="nacelle"/>
+    <origin xyz="0 0 10.0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Rotor Hub Link: cylinder rotating around X-axis -->
+  <link name="rotor">
+    <inertial>
+      <mass value="500.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="50.0" ixy="0" ixz="0" iyy="50.0" iyz="0" izz="80.0"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <cylinder length="0.6" radius="0.5"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="0 1.5708 0"/>
+    </visual>
+  </link>
+
+  <!-- Rotor Joint: spins blades around horizontal X-axis -->
+  <joint name="rotor_joint" type="continuous">
+    <parent link="nacelle"/>
+    <child link="rotor"/>
+    <origin xyz="1.5 0 0.0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+  </joint>
+
+  <!-- Blade 1: projects outward from rotor along local Z-axis -->
+  <link name="blade1">
+    <inertial>
+      <mass value="100.0"/>
+      <origin xyz="0 0 2.5" rpy="0 0 0"/>
+      <inertia ixx="200.0" ixy="0" ixz="0" iyy="200.0" iyz="0" izz="2.0"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.1 0.3 5.0"/>
+      </geometry>
+      <origin xyz="0 0 2.5" rpy="0 0 0"/>
+    </visual>
+  </link>
+
+  <joint name="blade1_joint" type="fixed">
+    <parent link="rotor"/>
+    <child link="blade1"/>
+    <origin xyz="0 0 0.5" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Blade 2: projects opposite to blade 1 -->
+  <link name="blade2">
+    <inertial>
+      <mass value="100.0"/>
+      <origin xyz="0 0 2.5" rpy="0 0 0"/>
+      <inertia ixx="200.0" ixy="0" ixz="0" iyy="200.0" iyz="0" izz="2.0"/>
+    </inertial>
+    <visual>
+      <geometry>
+        <box size="0.1 0.3 5.0"/>
+      </geometry>
+      <origin xyz="0 0 2.5" rpy="0 0 0"/>
+    </visual>
+  </link>
+
+  <joint name="blade2_joint" type="fixed">
+    <parent link="rotor"/>
+    <child link="blade2"/>
+    <origin xyz="0 0 -0.5" rpy="3.14159 0 0"/>
+  </joint>
+
+</robot>
