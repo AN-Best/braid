@@ -123,3 +123,201 @@ class RigidBodyURDF(Component):
         # 2. Dynamic relationship: dv/dt = ABA(q, v, tau_net)
         for i in range(self.n_joints):
             self.equations.append(self.vdot_states[i] - vdot_expr[i])
+
+
+def sympy_to_casadi(expr, symbol_map):
+    """
+    Recursively converts a SymPy expression to a CasADi SX expression.
+    symbol_map: dict mapping SymPy expressions to CasADi expressions.
+    """
+    import sympy as sp
+    import casadi as ca
+
+    if expr in symbol_map:
+        return symbol_map[expr]
+
+    if isinstance(expr, (sp.Integer, sp.Float)):
+        return float(expr)
+
+    if isinstance(expr, sp.Rational):
+        return float(expr.p) / float(expr.q)
+
+    if expr == sp.pi:
+        return ca.pi
+
+    if expr.is_Symbol:
+        if expr.name in symbol_map:
+            return symbol_map[expr.name]
+        return ca.SX.sym(expr.name)
+
+    if isinstance(expr, sp.core.function.AppliedUndef):
+        if str(expr) in symbol_map:
+            return symbol_map[str(expr)]
+        return ca.SX.sym(str(expr.func))
+
+    if isinstance(expr, sp.Eq):
+        return sympy_to_casadi(expr.lhs - expr.rhs, symbol_map)
+
+    # Recursively convert args
+    args = [sympy_to_casadi(arg, symbol_map) for arg in expr.args]
+
+    if isinstance(expr, sp.Add):
+        return sum(args)
+    elif isinstance(expr, sp.Mul):
+        res = args[0]
+        for arg in args[1:]:
+            res = res * arg
+        return res
+    elif isinstance(expr, sp.Pow):
+        return args[0]**args[1]
+    elif isinstance(expr, sp.sin):
+        return ca.sin(args[0])
+    elif isinstance(expr, sp.cos):
+        return ca.cos(args[0])
+    elif isinstance(expr, sp.tan):
+        return ca.tan(args[0])
+    elif isinstance(expr, sp.asin):
+        return ca.asin(args[0])
+    elif isinstance(expr, sp.acos):
+        return ca.acos(args[0])
+    elif isinstance(expr, sp.atan):
+        return ca.atan(args[0])
+    elif isinstance(expr, sp.atan2):
+        return ca.atan2(args[0], args[1])
+    elif isinstance(expr, sp.exp):
+        return ca.exp(args[0])
+    elif isinstance(expr, sp.log):
+        return ca.log(args[0])
+    elif isinstance(expr, sp.sqrt):
+        return ca.sqrt(args[0])
+    else:
+        raise TypeError(f"Unsupported SymPy operator / function: {type(expr)}: {expr}")
+
+
+class RigidBodySymPy(Component):
+    """
+    Multibody rigid body dynamics component loaded from SymPy equations of motion.
+    Converts SymPy physics/mechanics models (e.g. KanesMethod, LagrangesMethod, or explicit symbolic equations)
+    to CasADi SX expressions.
+    """
+    def __init__(self, name: str, q, u=None, equations=None, control_symbols=None, param_symbols=None, ports=None):
+        super().__init__(name)
+        
+        import sympy as sp
+        
+        control_symbols = control_symbols or []
+        param_symbols = param_symbols or {}
+        ports = ports or {}
+        
+        t = sp.Symbol('t')
+        
+        if u is None:
+            u = [sp.Derivative(qi, t) for qi in q]
+            
+        self.q_sympy = list(q)
+        self.u_sympy = list(u)
+        
+        self.q_states = []
+        self.qdot_states = []
+        self.u_states = []
+        self.udot_states = []
+        
+        symbol_map = {}
+        
+        # Add states for coordinate variables q
+        for qi in self.q_sympy:
+            q_name = str(qi)
+            if '(' in q_name:
+                q_name = q_name.split('(')[0]
+            q_s, qdot_s = self.add_state(f"q_{self.name}_{q_name}")
+            self.q_states.append(q_s)
+            self.qdot_states.append(qdot_s)
+            
+            symbol_map[qi] = q_s
+            symbol_map[sp.Derivative(qi, t)] = qdot_s
+            
+        # Add states for speed variables u
+        for ui in self.u_sympy:
+            if isinstance(ui, sp.Derivative):
+                inner_name = str(ui.args[0])
+                if '(' in inner_name:
+                    inner_name = inner_name.split('(')[0]
+                u_name = f"{inner_name}_dot"
+            else:
+                u_name = str(ui)
+                if '(' in u_name:
+                    u_name = u_name.split('(')[0]
+            u_s, udot_s = self.add_state(f"u_{self.name}_{u_name}")
+            self.u_states.append(u_s)
+            self.udot_states.append(udot_s)
+            
+            symbol_map[ui] = u_s
+            symbol_map[sp.Derivative(ui, t)] = udot_s
+            
+        # Register parameters
+        self.param_syms = {}
+        for p_sym, default_val in param_symbols.items():
+            p_ca = ca.SX.sym(p_sym.name)
+            self.register_param(p_sym.name, p_ca, default=default_val)
+            symbol_map[p_sym] = p_ca
+            self.param_syms[p_sym] = p_ca
+            
+        # Register control inputs
+        self.control_syms = {}
+        for c_sym in control_symbols:
+            c_ca = ca.SX.sym(c_sym.name)
+            symbol_map[c_sym] = c_ca
+            self.control_syms[c_sym] = c_ca
+            
+        # Convert equations
+        from sympy.physics.mechanics import KanesMethod, LagrangesMethod
+        
+        extracted_eqs = []
+        if isinstance(equations, KanesMethod):
+            kindiff = equations.kindiffdict()
+            for qi_dot, expr in kindiff.items():
+                extracted_eqs.append(qi_dot - expr)
+                
+            M = equations.mass_matrix
+            f = equations.forcing
+            udot_vec = sp.Matrix([sp.Derivative(ui, t) for ui in self.u_sympy])
+            dyn_eqs = M * udot_vec - f
+            for eq in dyn_eqs:
+                extracted_eqs.append(eq)
+                
+        elif isinstance(equations, LagrangesMethod):
+            M = equations.mass_matrix
+            f = equations.forcing
+            qdot_vec = sp.Matrix([sp.Derivative(qi, t) for qi in self.q_sympy])
+            qddot_vec = sp.Matrix([sp.Derivative(q_dot, t) for q_dot in qdot_vec])
+            dyn_eqs = M * qddot_vec - f
+            for eq in dyn_eqs:
+                extracted_eqs.append(eq)
+                
+        elif isinstance(equations, (list, tuple)):
+            extracted_eqs = list(equations)
+        elif equations is not None:
+            extracted_eqs = [equations]
+            
+        for eq in extracted_eqs:
+            ca_eq = sympy_to_casadi(eq, symbol_map)
+            self.equations.append(ca_eq)
+            
+        # If we don't have kinematic equations, add qdot_s - u_s = 0
+        if not isinstance(equations, KanesMethod):
+            if len(self.equations) <= len(self.u_states):
+                for i in range(len(self.q_states)):
+                    self.equations.insert(i, self.qdot_states[i] - self.u_states[i])
+
+        # Convert ports
+        for p_name, (eff_sp, acr_sp, dacr_sp) in ports.items():
+            eff_ca = sympy_to_casadi(eff_sp, symbol_map)
+            acr_ca = sympy_to_casadi(acr_sp, symbol_map)
+            dacr_ca = sympy_to_casadi(dacr_sp, symbol_map)
+            self.ports[p_name] = [eff_ca, acr_ca, dacr_ca]
+            
+        # Expose control symbols as ports
+        for c_sym, c_ca in self.control_syms.items():
+            if c_sym.name not in self.ports:
+                self.ports[c_sym.name] = [c_ca, ca.SX(0), ca.SX(0)]
+
