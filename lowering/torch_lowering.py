@@ -58,7 +58,7 @@ def make_torch_ode(ir: dict):
     for entry in ir['ode_rhs']:
         rhs_strs.append(_ast_to_str(entry['expr'], state_idx, param_idx))
     
-    stack_str = ", ".join(rhs_strs)
+    stack_str = ", ".join([f"torch.as_tensor({s}, device=x.device, dtype=x.dtype)" for s in rhs_strs])
     code = f"""
 def ode_func_compiled(t, x, p):
     return torch.stack([{stack_str}], dim=-1)
@@ -145,7 +145,7 @@ def make_torch_residuals(ir: dict):
     for ast in ir['residuals']:
         res_strs.append(_ast_to_str_dae(ast, state_idx, xdot_idx, param_idx))
     
-    stack_str = ", ".join(res_strs)
+    stack_str = ", ".join([f"torch.as_tensor({s}, device=x.device, dtype=x.dtype)" for s in res_strs])
     code = f"""
 def residual_func_compiled(t, x, yp, p):
     return torch.stack([{stack_str}], dim=-1)
