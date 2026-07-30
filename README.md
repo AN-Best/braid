@@ -2,7 +2,7 @@
 
 # braid
 
-[![Discord](https://img.shields.io/badge/Discord-Join-%235865F2?logo=discord&logoColor=white)](https://discord.gg/BWGPwJVRAp)
+[![Discord](https://img.shields.io/badge/Discord-Join-%235865F2?logo=discord&logoColor=white)](https://discord.gg/BWGPwJVRAp) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **GPU-parallel acausal component-based simulation for reinforcement learning and optimal control.**
 
@@ -152,10 +152,6 @@ braid/
 
 ## Licensing
 
-Braid is free for non-commercial use, including academic research, personal projects, and educational purposes.
-
-**Commercial use requires a license.** If you are using Braid in an industry context — including research funded by industry, product development, or internal tooling — please get in touch to[...]
-
-📬 [Contact for commercial licensing](mailto:anbest.37.7@gmail.com)
+This project is licensed under the MIT License — see the LICENSE file for details.
 
 ---
