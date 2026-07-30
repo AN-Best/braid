@@ -6,15 +6,14 @@
 
 **GPU-parallel acausal component-based simulation for reinforcement learning and optimal control.**
 
-Braid lets you build physical systems from reusable components — springs, masses, dampers — connect them together, and automatically produce GPU-parallelizable simulations suitable for RL train[...] 
-
+Braid lets you build physical systems from reusable components — springs, masses, dampers — connect them together, and automatically produce GPU-parallelizable simulations suitable for RL training and optimal control.
 
 
 ---
 
 ## Motivation
 
-Most physics simulators for RL either lock you into rigid-body dynamics (MuJoCo, Brax) or require you to manually derive equations of motion. Braid takes a different approach: you describe your sy[...]
+Most physics simulators for RL either lock you into rigid-body dynamics (MuJoCo, Brax) or require you to manually derive equations of motion. Braid takes a different approach: you describe your system using an acausal component library, and the compiler handles the rest — DAE assembly, index reduction, tearing/elimination, and code generation to target numerical backends.
 
 The result is a differentiable, GPU-parallel ODE that can be evaluated over thousands of rollouts/initial conditions simultaneously.
 
@@ -42,14 +41,14 @@ Numeric simulation functions (vmap / parallel batch execution)
 
 Braid has a fully implemented compiler middle-end and a high-performance numerical simulation engine:
 
-- **Pantelides Index Reduction Pass**: Employs structural DAE index reduction using maximum bipartite matching and directed alternating graph reachability traversal (backed by `networkx`). Differe[...]
+- **Pantelides Index Reduction Pass**: Employs structural DAE index reduction using maximum bipartite matching and directed alternating graph reachability traversal (backed by `networkx`). Differentiates constraints to reduce the DAE system to index-1.
 - **Tearing Pass**: Symbolically solves the DAE active equations for all matched solved variables (algebraic unknowns and state derivatives).
-- **JSON Intermediate Representation (IR)**: Serializes/deserializes compiled `CasadiDAE` structures using Braid's Version 2.0 AST syntax. It explicitly embeds metadata like `"model_type": "ODE"` [...]
+- **JSON Intermediate Representation (IR)**: Serializes/deserializes compiled `CasadiDAE` structures using Braid's Version 2.0 AST syntax. It explicitly embeds metadata like `"model_type": "ODE"` to determine solver compatibility.
 - **Numerical Simulation Backend (`simulation.py` and `backends/` folder)**:
   - **NumPy Backend (`backends/numpy_backend.py`)**: Integrates with SciPy's `scipy.integrate.solve_ivp` supporting standard adaptive-step solvers (e.g., `RK45`, `BDF`, `LSODA`, `Radau`, etc.).
-  - **PyTorch Backend (`backends/torch_backend.py`)**: Optimized for GPU-parallel execution and batched rollouts. Integrates with `torchdiffeq.odeint` / `odeint_adjoint` for parallel, differentiab[...]
-  - **Julia Backend (`backends/julia_backend.py`)**: High-performance ODE integration via [DifferentialEquations.jl](https://docs.sciml.ai/DiffEqDocs/stable/). It generates allocation-free Julia f[...]
-  - **GPU Acceleration & Batch Parallelization**: Supports batched initial conditions `y0` of shape `(batch_size, num_states)` and batched parameters `params` of shape `(batch_size, num_params)`. [...]
+  - **PyTorch Backend (`backends/torch_backend.py`)**: Optimized for GPU-parallel execution and batched rollouts. Integrates with `torchdiffeq.odeint` / `odeint_adjoint` for parallel, differentiable ODE simulations.
+  - **Julia Backend (`backends/julia_backend.py`)**: High-performance ODE integration via [DifferentialEquations.jl](https://docs.sciml.ai/DiffEqDocs/stable/). It generates allocation-free Julia functions `f(du, u, p, t)` at runtime, supporting multi-threaded CPU execution (`EnsembleThreads`) or NVIDIA GPUs (`EnsembleGPUKernel` via `DiffEqGPU.jl` + `CUDA.jl`) when available.
+  - **GPU Acceleration & Batch Parallelization**: Supports batched initial conditions `y0` of shape `(batch_size, num_states)` and batched parameters `params` of shape `(batch_size, num_params)`. This allows running thousands of parallel simulations simultaneously on the GPU in a single vectorized pass (PyTorch backend) or via Julia's ensemble infrastructure.
 
 ---
 
