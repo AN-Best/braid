@@ -2,19 +2,12 @@
 
 # braid
 
+[![Discord](https://img.shields.io/badge/Discord-Join-%235865F2?logo=discord&logoColor=white)](https://discord.gg/BWGPwJVRAp) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 **GPU-parallel acausal component-based simulation for reinforcement learning and optimal control.**
 
 Braid lets you build physical systems from reusable components — springs, masses, dampers — connect them together, and automatically produce GPU-parallelizable simulations suitable for RL training and optimal control.
 
----
-
-## Licensing
-
-Braid is free for non-commercial use, including academic research, personal projects, and educational purposes.
-
-**Commercial use requires a license.** If you are using Braid in an industry context — including research funded by industry, product development, or internal tooling — please get in touch to discuss licensing options.
-
-📬 [Contact for commercial licensing](mailto:anbest.37.7@gmail.com)
 
 ---
 
@@ -155,6 +148,9 @@ braid/
 
 ---
 
-## Background
 
-Braid is inspired by Modelica's acausal modeling paradigm and the SciML ecosystem's ModelingToolkit.jl. The core insight is that the component architecture — not the backend — is the primary contribution.
+## Licensing
+
+This project is licensed under the MIT License — see the LICENSE file for details.
+
+---
