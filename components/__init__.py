@@ -7,4 +7,17 @@ from .hvac_thermal import (
     TemperatureSource, HeatFlowSource, TemperatureSensor,
     MassFlowHeatAdvection, ThermalZone, HeatExchangerNTU
 )
+from .fluid_dynamics import (
+    FluidCapacitance, PipeResistance, ControlValve, HydraulicPump, PressureSource
+)
+from .power_electronics import (
+    DCMotor, EquivalentCircuitBattery
+)
+from .control_blocks import (
+    PIDController, FirstOrderFilter
+)
+from .refrigeration import (
+    VaporCompressor, ExpansionValve
+)
+
 
